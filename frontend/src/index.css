@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Karla:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.ff-display { font-family: 'Baloo 2', sans-serif; }
+.ff-mono { font-family: 'Space Mono', monospace; }
+body { font-family: 'Karla', sans-serif; }
+html, body, #root { width: 100%; max-width: 100%; min-height: 100%; }
+html { overflow-x: hidden; }
+body { margin: 0; overflow-x: hidden; }
+button, input, select, textarea { max-width: 100%; box-sizing: border-box; }
+input, select, textarea { min-width: 0; }
+
+@keyframes steamRise {
+  0% { transform: translateY(0) scaleX(1); opacity: 0.5; }
+  50% { transform: translateY(-14px) scaleX(1.4); opacity: 0.3; }
+  100% { transform: translateY(-26px) scaleX(0.7); opacity: 0; }
+}
+.steam-wisp { animation: steamRise 2.6s ease-in-out infinite; }
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0) rotate(45deg); }
+  50% { transform: translateY(-8px) rotate(45deg); }
+}
+.float-slow { animation: floatSlow 4s ease-in-out infinite; }
+
+@keyframes cartBump {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.18); }
+  60% { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+.cart-bump { animation: cartBump 0.4s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .steam-wisp, .float-slow, .cart-bump { animation: none !important; }
+}
