@@ -94,7 +94,17 @@ router.post('/orders', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: products } = await client.query(`SELECT wp.*, COALESCE(p.name, wp.product_name) AS resolved_product_name FROM wholesale_products wp LEFT JOIN products p ON p.id = wp.product_id WHERE wp.id = ANY($1::bigint[]) AND wp.is_active = TRUE ORDER BY wp.id FOR UPDATE`, [[...requestedQuantities.keys()]]);
+const { rows: products } = await client.query(
+  `SELECT wp.*,
+          COALESCE(p.name, wp.product_name) AS resolved_product_name
+   FROM wholesale_products wp
+   LEFT JOIN products p ON p.id = wp.product_id
+   WHERE wp.id = ANY($1::bigint[])
+     AND wp.is_active = TRUE
+   ORDER BY wp.id
+   FOR UPDATE OF wp`,
+  [[...requestedQuantities.keys()]]
+);
     const productsById = new Map(products.map((product) => [Number(product.id), product]));
     const cleanItems = [];
     let total = 0;
