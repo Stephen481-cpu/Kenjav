@@ -1,7 +1,7 @@
 -- KENJAV PostgreSQL schema
 -- Run this once against your PostgreSQL database before `npm run seed`.
 
-CREATE TABLE IF NOT EXISTS products (
+CREATE TABLE products (
   id UUID PRIMARY KEY,
   slug VARCHAR(255) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS offers (
+CREATE TABLE offers (
   id UUID PRIMARY KEY,
   badge VARCHAR(255) NOT NULL DEFAULT 'HOT DEAL',
   title VARCHAR(255) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS offers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS orders (
+CREATE TABLE orders (
   id UUID PRIMARY KEY,
   order_code VARCHAR(50) NOT NULL UNIQUE,
   customer_name VARCHAR(255) NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS order_items (
+CREATE TABLE order_items (
   id UUID PRIMARY KEY,
   order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
@@ -61,16 +61,16 @@ CREATE TABLE IF NOT EXISTS order_items (
   line_total_kes INTEGER NOT NULL CHECK (line_total_kes >= 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_products_active_sort ON products (is_active, sort_order, id);
-CREATE INDEX IF NOT EXISTS idx_offers_active_created ON offers (is_active, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_orders_created ON orders (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_orders_code ON orders (order_code);
-CREATE INDEX IF NOT EXISTS idx_orders_mpesa_checkout ON orders (mpesa_checkout_request_id);
-CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items (order_id);
+CREATE INDEX idx_products_active_sort ON products (is_active, sort_order, id);
+CREATE INDEX idx_offers_active_created ON offers (is_active, created_at DESC);
+CREATE INDEX idx_orders_created ON orders (created_at DESC);
+CREATE INDEX idx_orders_code ON orders (order_code);
+CREATE INDEX idx_orders_mpesa_checkout ON orders (mpesa_checkout_request_id);
+CREATE INDEX idx_order_items_order ON order_items (order_id);
 
 -- Wholesale / shopkeeper portal tables
 -- These CREATE TABLE statements make a fresh Aiven database work too.
-CREATE TABLE IF NOT EXISTS shopkeepers (
+CREATE TABLE shopkeepers (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   phone VARCHAR(50) NOT NULL,
@@ -81,9 +81,9 @@ CREATE TABLE IF NOT EXISTS shopkeepers (
   joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_shopkeepers_phone_unique ON shopkeepers(phone);
+CREATE UNIQUE INDEX idx_shopkeepers_phone_unique ON shopkeepers(phone);
 
-CREATE TABLE IF NOT EXISTS purchases (
+CREATE TABLE purchases (
   id BIGSERIAL PRIMARY KEY,
   shopkeeper_id BIGINT NOT NULL REFERENCES shopkeepers(id) ON DELETE CASCADE,
   product_name TEXT NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS purchases (
   date TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS payments (
+CREATE TABLE payments (
   id BIGSERIAL PRIMARY KEY,
   shopkeeper_id BIGINT NOT NULL REFERENCES shopkeepers(id) ON DELETE CASCADE,
   amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
@@ -104,21 +104,21 @@ CREATE TABLE IF NOT EXISTS payments (
   date TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT '';
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivation_reason TEXT;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS method VARCHAR(20) NOT NULL DEFAULT 'cash';
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference VARCHAR(100);
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'confirmed';
-ALTER TABLE purchases ADD COLUMN IF NOT EXISTS date TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS date TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE shopkeepers ADD COLUMN location TEXT NOT NULL DEFAULT '';
+ALTER TABLE shopkeepers ADD COLUMN credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE shopkeepers ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE shopkeepers ADD COLUMN deactivation_reason TEXT;
+ALTER TABLE shopkeepers ADD COLUMN deactivated_at TIMESTAMPTZ;
+ALTER TABLE shopkeepers ADD COLUMN joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE shopkeepers ADD COLUMN password_hash TEXT;
+ALTER TABLE shopkeepers ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE payments ADD COLUMN method VARCHAR(20) NOT NULL DEFAULT 'cash';
+ALTER TABLE payments ADD COLUMN reference VARCHAR(100);
+ALTER TABLE payments ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'confirmed';
+ALTER TABLE purchases ADD COLUMN date TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE payments ADD COLUMN date TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
-CREATE TABLE IF NOT EXISTS wholesale_products (
+CREATE TABLE wholesale_products (
   id BIGSERIAL PRIMARY KEY,
   product_id UUID REFERENCES products(id) ON DELETE SET NULL,
   product_name TEXT,
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS wholesale_products (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (product_id IS NOT NULL OR product_name IS NOT NULL)
 );
-CREATE TABLE IF NOT EXISTS wholesale_orders (
+CREATE TABLE wholesale_orders (
   id BIGSERIAL PRIMARY KEY,
   shopkeeper_id BIGINT NOT NULL REFERENCES shopkeepers(id) ON DELETE RESTRICT,
   status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','processing','ready','completed','cancelled')),
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS wholesale_orders (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE TABLE IF NOT EXISTS wholesale_order_items (
+CREATE TABLE wholesale_order_items (
   id BIGSERIAL PRIMARY KEY,
   order_id BIGINT NOT NULL REFERENCES wholesale_orders(id) ON DELETE CASCADE,
   wholesale_product_id BIGINT NOT NULL REFERENCES wholesale_products(id) ON DELETE RESTRICT,
@@ -150,14 +150,14 @@ CREATE TABLE IF NOT EXISTS wholesale_order_items (
   unit_price_kes NUMERIC(12,2) NOT NULL CHECK (unit_price_kes >= 0),
   line_total_kes NUMERIC(12,2) NOT NULL CHECK (line_total_kes >= 0)
 );
-CREATE INDEX IF NOT EXISTS idx_wholesale_orders_shopkeeper ON wholesale_orders(shopkeeper_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_wholesale_order_items_order ON wholesale_order_items(order_id);
-CREATE INDEX IF NOT EXISTS idx_wholesale_products_active ON wholesale_products(is_active, id);
+CREATE INDEX idx_wholesale_orders_shopkeeper ON wholesale_orders(shopkeeper_id, created_at DESC);
+CREATE INDEX idx_wholesale_order_items_order ON wholesale_order_items(order_id);
+CREATE INDEX idx_wholesale_products_active ON wholesale_products(is_active, id);
 
-ALTER TABLE purchases ADD COLUMN IF NOT EXISTS source_order_id BIGINT REFERENCES wholesale_orders(id) ON DELETE SET NULL;
+ALTER TABLE purchases ADD COLUMN source_order_id BIGINT REFERENCES wholesale_orders(id) ON DELETE SET NULL;
 DROP INDEX IF EXISTS idx_purchases_source_order_unique;
-CREATE INDEX IF NOT EXISTS idx_purchases_source_order ON purchases(source_order_id) WHERE source_order_id IS NOT NULL;
-CREATE TABLE IF NOT EXISTS wholesale_notifications (
+CREATE INDEX idx_purchases_source_order ON purchases(source_order_id) WHERE source_order_id IS NOT NULL;
+CREATE TABLE wholesale_notifications (
   id BIGSERIAL PRIMARY KEY,
   shopkeeper_id BIGINT NOT NULL REFERENCES shopkeepers(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
@@ -165,11 +165,11 @@ CREATE TABLE IF NOT EXISTS wholesale_notifications (
   is_read BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_wholesale_notifications_shopkeeper ON wholesale_notifications(shopkeeper_id, is_read, created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_wholesale_products_product_unique ON wholesale_products(product_id) WHERE product_id IS NOT NULL;
+CREATE INDEX idx_wholesale_notifications_shopkeeper ON wholesale_notifications(shopkeeper_id, is_read, created_at DESC);
+CREATE UNIQUE INDEX idx_wholesale_products_product_unique ON wholesale_products(product_id) WHERE product_id IS NOT NULL;
 -- Wholesale daily expenses and financial reporting
 
-CREATE TABLE IF NOT EXISTS wholesale_expenses (
+CREATE TABLE wholesale_expenses (
   id BIGSERIAL PRIMARY KEY,
 
   amount_kes NUMERIC(12,2) NOT NULL
@@ -184,14 +184,14 @@ CREATE TABLE IF NOT EXISTS wholesale_expenses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_wholesale_expenses_date
+CREATE INDEX idx_wholesale_expenses_date
 ON wholesale_expenses(expense_date DESC);
 
-CREATE INDEX IF NOT EXISTS idx_wholesale_expenses_category
+CREATE INDEX idx_wholesale_expenses_category
 ON wholesale_expenses(category);
 
 -- Wholesale inventory movement audit trail
-CREATE TABLE IF NOT EXISTS inventory_movements (
+CREATE TABLE inventory_movements (
   id BIGSERIAL PRIMARY KEY,
   wholesale_product_id BIGINT NOT NULL REFERENCES wholesale_products(id) ON DELETE CASCADE,
   movement_type VARCHAR(20) NOT NULL CHECK (movement_type IN ('opening','restock','sale','adjustment','return')),
@@ -203,5 +203,39 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_inventory_movements_product ON inventory_movements(wholesale_product_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_inventory_movements_created ON inventory_movements(created_at DESC);
+CREATE INDEX idx_inventory_movements_product ON inventory_movements(wholesale_product_id, created_at DESC);
+CREATE INDEX idx_inventory_movements_created ON inventory_movements(created_at DESC);
+
+-- Flexible manual / offline sales. Amount is the only required sale detail.
+CREATE TABLE manual_sales (
+  id BIGSERIAL PRIMARY KEY,
+  shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
+  wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE SET NULL,
+  product_name TEXT,
+  quantity INTEGER CHECK (quantity IS NULL OR quantity > 0),
+  amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
+  customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in',
+  payment_method VARCHAR(20),
+  sale_period VARCHAR(50),
+  sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- Keep an older manual_sales table compatible if one was created by an earlier version.
+ALTER TABLE manual_sales ADD COLUMN shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL;
+ALTER TABLE manual_sales ADD COLUMN wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE SET NULL;
+ALTER TABLE manual_sales ADD COLUMN product_name TEXT;
+ALTER TABLE manual_sales ADD COLUMN quantity INTEGER;
+ALTER TABLE manual_sales ADD COLUMN amount_kes NUMERIC(12,2);
+ALTER TABLE manual_sales ADD COLUMN customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in';
+ALTER TABLE manual_sales ADD COLUMN payment_method VARCHAR(20);
+ALTER TABLE manual_sales ADD COLUMN sale_period VARCHAR(50);
+ALTER TABLE manual_sales ADD COLUMN sale_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE manual_sales ADD COLUMN notes TEXT;
+ALTER TABLE manual_sales ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE manual_sales ALTER COLUMN shopkeeper_id DROP NOT NULL;
+ALTER TABLE manual_sales ALTER COLUMN product_name DROP NOT NULL;
+ALTER TABLE manual_sales ALTER COLUMN quantity DROP NOT NULL;
+ALTER TABLE manual_sales ALTER COLUMN amount_kes SET NOT NULL;
+CREATE INDEX idx_manual_sales_date ON manual_sales(sale_date DESC);
+CREATE INDEX idx_manual_sales_shopkeeper_date ON manual_sales(shopkeeper_id, sale_date DESC);

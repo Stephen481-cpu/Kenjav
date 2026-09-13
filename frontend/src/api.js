@@ -52,6 +52,9 @@ export const api = {
 
   // Wholesale management (inside the existing KENJAV Admin panel)
   adminGetShopkeepers: (token) => request('/api/wholesale/shopkeepers', { token }),
+  adminGetManualSales: (token, date) => request(`/api/wholesale/reports/manual-sales${date ? `?date=${encodeURIComponent(date)}` : ''}`, { token }),
+  adminCreateManualSale: (token, payload) => request('/api/wholesale/reports/manual-sales', { method: 'POST', body: payload, token }),
+  adminDeleteManualSale: (token, id) => request(`/api/wholesale/reports/manual-sales/${id}`, { method: 'DELETE', token }),
   adminRecordManualSale: (token, shopkeeperId, payload) => request(`/api/wholesale/shopkeepers/${shopkeeperId}/purchases`, { method: 'POST', body: payload, token }),
   adminCreateShopkeeper: (token, payload) => request('/api/wholesale/shopkeepers', { method: 'POST', body: payload, token }),
   adminUpdateShopkeeper: (token, id, payload) => request(`/api/wholesale/shopkeepers/${id}`, { method: 'PUT', body: payload, token }),

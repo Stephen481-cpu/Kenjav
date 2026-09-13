@@ -65,13 +65,17 @@ const [expenseForm, setExpenseForm] = useState({
 });
 
 const [expenses, setExpenses] = useState([]);
+const [manualSales, setManualSales] = useState([]);
 
 const [manualSaleForm, setManualSaleForm] = useState({
+  customer_type: 'walk_in',
   shopkeeper_id: '',
   wholesale_product_id: '',
   product_name: '',
-  quantity: '1',
+  quantity: '',
   amount_kes: '',
+  payment_method: '',
+  sale_period: '',
   sale_date: todayNairobi(),
   notes: ''
 });
@@ -90,7 +94,8 @@ const [manualSaleForm, setManualSaleForm] = useState({
       r,
       mp,
       mr,
-      ex
+      ex,
+      ms
     ] = await Promise.all([
       api.adminGetShopkeepers(token),
       api.adminGetWholesaleProducts(token),
@@ -106,6 +111,10 @@ const [manualSaleForm, setManualSaleForm] = useState({
       api.adminGetWholesaleExpenses(
         token,
         reportDate
+      ),
+      api.adminGetManualSales(
+        token,
+        reportDate
       )
     ]);
 
@@ -118,6 +127,7 @@ const [manualSaleForm, setManualSaleForm] = useState({
     setMainProducts(mp);
     setMonthlyReport(mr);
     setExpenses(ex);
+    setManualSales(ms);
 
   } catch (e) {
     if (
@@ -295,57 +305,80 @@ const [manualSaleForm, setManualSaleForm] = useState({
   };
 
   const createManualSale = async e => {
-  e.preventDefault();
-  setError('');
-  setMessage('');
+    e.preventDefault();
+    setError('');
+    setMessage('');
 
-  const shopkeeperId = Number(manualSaleForm.shopkeeper_id);
-  const quantity = Number(manualSaleForm.quantity);
-  const amount = Number(manualSaleForm.amount_kes);
-  const productName = manualSaleForm.product_name.trim();
+    const amount = Number(manualSaleForm.amount_kes);
+    const quantity = manualSaleForm.quantity === '' ? null : Number(manualSaleForm.quantity);
+    const hasProduct = !!manualSaleForm.wholesale_product_id;
 
-  if (!Number.isInteger(shopkeeperId) || shopkeeperId < 1) {
-    return setError('Select the shopkeeper who received the sale.');
-  }
-  if (!productName) {
-    return setError('Enter a product name.');
-  }
-  if (!Number.isInteger(quantity) || quantity < 1) {
-    return setError('Quantity must be a positive whole number.');
-  }
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return setError('Enter a valid sale amount.');
-  }
-  if (!manualSaleForm.sale_date) {
-    return setError('Select the sale date.');
-  }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return setError('Enter a valid sale amount.');
+    }
 
-  try {
-    await api.adminRecordManualSale(token, shopkeeperId, {
-      product_name: productName,
-      quantity,
-      amount_kes: amount,
-      sale_date: manualSaleForm.sale_date,
-      wholesale_product_id: manualSaleForm.wholesale_product_id || undefined,
-      notes: manualSaleForm.notes.trim() || undefined
-    });
+    if (!manualSaleForm.sale_date) {
+      return setError('Select the sale date.');
+    }
 
-    setManualSaleForm({
-      shopkeeper_id: '',
-      wholesale_product_id: '',
-      product_name: '',
-      quantity: '1',
-      amount_kes: '',
-      sale_date: todayNairobi(),
-      notes: ''
-    });
-    setMessage('Manual sale recorded successfully.');
-    await load();
-  } catch (e) {
-    if (/401|authorization|token|expired/i.test(e.message || '')) onAuthError?.();
-    else setError(e.message);
-  }
-};
+    if (manualSaleForm.customer_type === 'shopkeeper' && !manualSaleForm.shopkeeper_id) {
+      return setError('Select the shopkeeper for this offline sale.');
+    }
+
+    if (hasProduct && (!Number.isInteger(quantity) || quantity < 1)) {
+      return setError('Enter the quantity when selecting a catalogue product.');
+    }
+
+    if (!hasProduct && quantity !== null && (!Number.isInteger(quantity) || quantity < 1)) {
+      return setError('Quantity must be a positive whole number when provided.');
+    }
+
+    try {
+      await api.adminCreateManualSale(token, {
+        customer_type: manualSaleForm.customer_type,
+        shopkeeper_id: manualSaleForm.shopkeeper_id || undefined,
+        wholesale_product_id: manualSaleForm.wholesale_product_id || undefined,
+        product_name: manualSaleForm.product_name.trim() || undefined,
+        quantity: quantity === null ? undefined : quantity,
+        amount_kes: amount,
+        payment_method: manualSaleForm.payment_method || undefined,
+        sale_period: manualSaleForm.sale_period || undefined,
+        sale_date: manualSaleForm.sale_date,
+        notes: manualSaleForm.notes.trim() || undefined
+      });
+
+      setManualSaleForm({
+        customer_type: 'walk_in',
+        shopkeeper_id: '',
+        wholesale_product_id: '',
+        product_name: '',
+        quantity: '',
+        amount_kes: '',
+        payment_method: '',
+        sale_period: '',
+        sale_date: manualSaleForm.sale_date || todayNairobi(),
+        notes: ''
+      });
+
+      setMessage('Manual / offline sale recorded successfully.');
+      await load();
+    } catch (e) {
+      if (/401|authorization|token|expired/i.test(e.message || '')) onAuthError?.();
+      else setError(e.message);
+    }
+  };
+
+  const deleteManualSale = async id => {
+    if (!window.confirm('Delete this manual/offline sale? If stock was deducted, it will be restored.')) return;
+
+    try {
+      await api.adminDeleteManualSale(token, id);
+      setMessage('Manual / offline sale deleted successfully.');
+      await load();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
 
 const updatePayment = async (id, status) => {
     try {
@@ -1032,50 +1065,56 @@ const deleteExpense = async id => {
         <div className="grid lg:grid-cols-2 gap-5">
           <form onSubmit={createManualSale} className="bg-white rounded-3xl p-5 shadow-sm space-y-4">
             <div>
-              <h3 className="font-bold text-lg">Record Manual Sale</h3>
+              <h3 className="font-bold text-lg">Record Manual / Offline Sale</h3>
               <p className="text-sm" style={{ color: COLORS.muted }}>
-                Use this for sales made outside the website or shop portal. The sale is added to the shopkeeper ledger and, when a KENJAV wholesale product is selected, stock is deducted and the movement is recorded.
+                Record any sale made outside the website or shopkeeper portal. The sale amount is the only required core detail; add other information only when you have it.
               </p>
             </div>
 
             <label className="block">
-              <span className="block text-sm font-semibold mb-1">Shopkeeper</span>
-              <select required value={manualSaleForm.shopkeeper_id} onChange={e => setManualSaleForm({ ...manualSaleForm, shopkeeper_id: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border">
-                <option value="">Select shopkeeper</option>
-                {shopkeepers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — {s.phone}</option>)}
+              <span className="block text-sm font-semibold mb-1">Customer type</span>
+              <select value={manualSaleForm.customer_type} onChange={e => setManualSaleForm({ ...manualSaleForm, customer_type: e.target.value, shopkeeper_id: e.target.value === 'shopkeeper' ? manualSaleForm.shopkeeper_id : '' })} className="w-full px-4 py-2.5 rounded-xl border">
+                <option value="walk_in">Walk-in customer</option>
+                <option value="shopkeeper">Shopkeeper</option>
+                <option value="other">Other</option>
+                <option value="unspecified">Unspecified</option>
               </select>
             </label>
 
-            <label className="block">
-              <span className="block text-sm font-semibold mb-1">Select KENJAV product (optional)</span>
-              <select value={manualSaleForm.wholesale_product_id} onChange={e => {
-                const value = e.target.value;
-                const product = inventory.find(p => String(p.id) === value);
-                setManualSaleForm({
-                  ...manualSaleForm,
-                  wholesale_product_id: value,
-                  product_name: product?.name || manualSaleForm.product_name,
-                  amount_kes: product && manualSaleForm.quantity ? String(Number(product.wholesale_price_kes) * Number(manualSaleForm.quantity)) : manualSaleForm.amount_kes
-                });
-              }} className="w-full px-4 py-2.5 rounded-xl border">
-                <option value="">No catalogue product / enter manually</option>
-                {inventory.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name} — {money(p.wholesale_price_kes)} · {p.stock_quantity} in stock</option>)}
-              </select>
-            </label>
+            {manualSaleForm.customer_type === 'shopkeeper' && (
+              <label className="block">
+                <span className="block text-sm font-semibold mb-1">Shopkeeper</span>
+                <select required value={manualSaleForm.shopkeeper_id} onChange={e => setManualSaleForm({ ...manualSaleForm, shopkeeper_id: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border">
+                  <option value="">Select shopkeeper</option>
+                  {shopkeepers.filter(s => s.is_active).map(s => <option key={s.id} value={s.id}>{s.name} — {s.phone}</option>)}
+                </select>
+                <span className="block text-xs mt-1" style={{ color: COLORS.muted }}>This offline sale will be included in this shopkeeper's balance.</span>
+              </label>
+            )}
 
-            <label className="block">
-              <span className="block text-sm font-semibold mb-1">Product name</span>
-              <input required type="text" value={manualSaleForm.product_name} onChange={e => setManualSaleForm({ ...manualSaleForm, product_name: e.target.value })} placeholder="e.g. Classic Mandazi" className="w-full px-4 py-2.5 rounded-xl border" autoComplete="off" />
-            </label>
+            <Input label="Sale amount (KES) *" value={manualSaleForm.amount_kes} onChange={v => setManualSaleForm({ ...manualSaleForm, amount_kes: v })} min="0.01" step="0.01" />
 
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Quantity" value={manualSaleForm.quantity} onChange={v => {
-                const next = { ...manualSaleForm, quantity: v };
-                const product = inventory.find(p => String(p.id) === manualSaleForm.wholesale_product_id);
-                if (product && v) next.amount_kes = String(Number(product.wholesale_price_kes) * Number(v));
-                setManualSaleForm(next);
-              }} min="1" step="1" />
-              <Input label="Sale amount (KES)" value={manualSaleForm.amount_kes} onChange={v => setManualSaleForm({ ...manualSaleForm, amount_kes: v })} min="0.01" step="0.01" />
+              <label className="block">
+                <span className="block text-sm font-semibold mb-1">Sale period (optional)</span>
+                <select value={manualSaleForm.sale_period} onChange={e => setManualSaleForm({ ...manualSaleForm, sale_period: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border">
+                  <option value="">Not specified</option>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                  <option value="evening">Evening</option>
+                  <option value="all_day">All day</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="block text-sm font-semibold mb-1">Payment method (optional)</span>
+                <select value={manualSaleForm.payment_method} onChange={e => setManualSaleForm({ ...manualSaleForm, payment_method: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border">
+                  <option value="">Not specified</option>
+                  <option value="cash">Cash</option>
+                  <option value="mpesa">M-Pesa</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
             </div>
 
             <label className="block">
@@ -1083,23 +1122,86 @@ const deleteExpense = async id => {
               <input required type="date" value={manualSaleForm.sale_date} onChange={e => setManualSaleForm({ ...manualSaleForm, sale_date: e.target.value })} className="w-full px-4 py-2.5 rounded-xl border" />
             </label>
 
+            <div className="border-t pt-4 space-y-4">
+              <div>
+                <h4 className="font-bold">Optional product details</h4>
+                <p className="text-xs" style={{ color: COLORS.muted }}>Leave these blank when you only know the total amount. If you select a catalogue product, quantity is required and stock will be deducted.</p>
+              </div>
+
+              <label className="block">
+                <span className="block text-sm font-semibold mb-1">KENJAV wholesale product (optional)</span>
+                <select value={manualSaleForm.wholesale_product_id} onChange={e => {
+                  const value = e.target.value;
+                  const product = inventory.find(p => String(p.id) === value);
+                  setManualSaleForm({
+                    ...manualSaleForm,
+                    wholesale_product_id: value,
+                    product_name: value ? (product?.name || manualSaleForm.product_name) : manualSaleForm.product_name
+                  });
+                }} className="w-full px-4 py-2.5 rounded-xl border">
+                  <option value="">No catalogue product</option>
+                  {inventory.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name} — {money(p.wholesale_price_kes)} · {p.stock_quantity} in stock</option>)}
+                </select>
+              </label>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Input label="Product name (optional)" value={manualSaleForm.product_name} onChange={v => setManualSaleForm({ ...manualSaleForm, product_name: v })} />
+                <Input label="Quantity (optional)" value={manualSaleForm.quantity} onChange={v => setManualSaleForm({ ...manualSaleForm, quantity: v })} min="1" step="1" />
+              </div>
+            </div>
+
             <label className="block">
               <span className="block text-sm font-semibold mb-1">Notes (optional)</span>
-              <textarea value={manualSaleForm.notes} onChange={e => setManualSaleForm({ ...manualSaleForm, notes: e.target.value })} placeholder="e.g. Cash sale at the shop" className="w-full px-4 py-2.5 rounded-xl border min-h-24 resize-y" />
+              <textarea value={manualSaleForm.notes} onChange={e => setManualSaleForm({ ...manualSaleForm, notes: e.target.value })} placeholder="e.g. Morning sales, mixed products, customer paid in cash" className="w-full px-4 py-2.5 rounded-xl border min-h-24 resize-y" />
             </label>
 
-            <button type="submit" className="w-full py-3 rounded-xl font-semibold" style={{ background: COLORS.espresso, color: COLORS.cream }}>Record Manual Sale</button>
+            <button type="submit" className="w-full py-3 rounded-xl font-semibold" style={{ background: COLORS.espresso, color: COLORS.cream }}>Record Manual / Offline Sale</button>
           </form>
 
-          <div className="bg-white rounded-3xl p-5 shadow-sm">
-            <h3 className="font-bold text-lg mb-2">How manual sales are recorded</h3>
-            <ul className="list-disc pl-5 space-y-2 text-sm" style={{ color: COLORS.muted }}>
-              <li>The sale is added to the selected shopkeeper's outstanding balance.</li>
-              <li>The selected sale date is preserved using Kenya time.</li>
-              <li>If a KENJAV wholesale product is selected, available stock is checked and deducted safely.</li>
-              <li>The inventory movement is saved for audit/history.</li>
-              <li>For a product not in the wholesale catalogue, leave the product selector on manual entry.</li>
-            </ul>
+          <div className="space-y-5">
+            <div className="bg-white rounded-3xl p-5 shadow-sm">
+              <div className="flex justify-between items-start gap-3 mb-4">
+                <div>
+                  <h3 className="font-bold text-lg">Manual / Offline Sales</h3>
+                  <p className="text-sm" style={{ color: COLORS.muted }}>{reportDate}</p>
+                </div>
+                <b>{money(manualSales.reduce((total, sale) => total + Number(sale.amount_kes), 0))}</b>
+              </div>
+
+              {manualSales.length ? (
+                <div className="space-y-3">
+                  {manualSales.map(sale => (
+                    <div key={sale.id} className="border rounded-xl p-3">
+                      <div className="flex justify-between gap-3">
+                        <div>
+                          <b>{money(sale.amount_kes)}</b>
+                          <p className="text-sm mt-1" style={{ color: COLORS.muted }}>
+                            {sale.customer_type === 'shopkeeper' ? `Shopkeeper: ${sale.shopkeeper_name || 'Unknown'}` : sale.customer_type === 'walk_in' ? 'Walk-in customer' : sale.customer_type === 'other' ? 'Other customer' : 'Customer not specified'}
+                          </p>
+                          {(sale.product_name || sale.catalogue_product_name) && <p className="text-sm">{sale.product_name || sale.catalogue_product_name}{sale.quantity ? ` × ${sale.quantity}` : ''}</p>}
+                          {(sale.sale_period || sale.payment_method) && <p className="text-xs mt-1" style={{ color: COLORS.muted }}>{[sale.sale_period, sale.payment_method].filter(Boolean).join(' · ')}</p>}
+                          {sale.notes && <p className="text-sm mt-1" style={{ color: COLORS.muted }}>{sale.notes}</p>}
+                        </div>
+                        <button onClick={() => deleteManualSale(sale.id)} className="text-sm font-semibold" style={{ color: '#b91c1c' }}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty text="No manual/offline sales recorded for this date." />
+              )}
+            </div>
+
+            <div className="bg-white rounded-3xl p-5 shadow-sm">
+              <h3 className="font-bold text-lg mb-2">Flexible recording</h3>
+              <ul className="list-disc pl-5 space-y-2 text-sm" style={{ color: COLORS.muted }}>
+                <li>You can record only the total amount, such as KSh 5,000 for the morning.</li>
+                <li>You can optionally identify the customer as a walk-in, shopkeeper, other or unspecified.</li>
+                <li>For a shopkeeper, the offline sale is added to that shopkeeper's outstanding balance.</li>
+                <li>You can optionally add a product and quantity; catalogue products reduce stock and create an inventory audit entry.</li>
+                <li>Sales recorded here are included in daily and monthly sales totals.</li>
+              </ul>
+            </div>
           </div>
         </div>
       )}
@@ -1142,7 +1244,8 @@ const deleteExpense = async id => {
                 try {
                   const [
                     daily,
-                    dailyExpenses
+                    dailyExpenses,
+                    dailyManualSales
                   ] = await Promise.all([
                     api.adminGetWholesaleReport(
                       token,
@@ -1151,11 +1254,16 @@ const deleteExpense = async id => {
                     api.adminGetWholesaleExpenses(
                       token,
                       value
+                    ),
+                    api.adminGetManualSales(
+                      token,
+                      value
                     )
                   ]);
 
                   setReport(daily);
                   setExpenses(dailyExpenses);
+                  setManualSales(dailyManualSales);
 
                 } catch (err) {
                   setError(err.message);

@@ -14,11 +14,17 @@ function creditStatus(balanceKes, limitKes) {
 async function computeStats(id) {
   const { rows } = await pool.query(`
     SELECT
-      COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0) total_purchases_kes,
+      COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0)
+        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0) total_purchases_kes,
       COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0) total_payments_kes,
-      COALESCE((SELECT SUM(quantity) FROM purchases WHERE shopkeeper_id=$1),0) total_quantity,
-      (SELECT COUNT(*) FROM purchases WHERE shopkeeper_id=$1) order_count,
-      (SELECT date FROM purchases WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 1) last_purchase_at,
+      COALESCE((SELECT SUM(quantity) FROM purchases WHERE shopkeeper_id=$1),0)
+        + COALESCE((SELECT SUM(quantity) FROM manual_sales WHERE shopkeeper_id=$1),0) total_quantity,
+      (SELECT COUNT(*) FROM purchases WHERE shopkeeper_id=$1)
+        + (SELECT COUNT(*) FROM manual_sales WHERE shopkeeper_id=$1) order_count,
+      GREATEST(
+        COALESCE((SELECT MAX(date) FROM purchases WHERE shopkeeper_id=$1), '1970-01-01'::timestamptz),
+        COALESCE((SELECT MAX(sale_date)::timestamptz FROM manual_sales WHERE shopkeeper_id=$1), '1970-01-01'::timestamptz)
+      ) last_purchase_at,
       (SELECT date FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 1) last_payment_at`, [id]);
   const r=rows[0]; const purchases=Number(r.total_purchases_kes), payments=Number(r.total_payments_kes);
   return { total_purchases_kes:purchases,total_payments_kes:payments,balance_kes:purchases-payments,total_quantity:Number(r.total_quantity),order_count:Number(r.order_count),last_purchase_at:r.last_purchase_at,last_payment_at:r.last_payment_at };
@@ -46,7 +52,7 @@ router.post('/', async (req,res)=>{ const {name,phone,location,credit_limit_kes,
   catch(e){console.error(e); if(e.code==='23505') return res.status(409).json({error:'A shopkeeper with that phone already exists.'}); res.status(500).json({error:'Failed to create shopkeeper.'});}
 });
 
-router.get('/:id', async(req,res)=>{const id=Number(req.params.id); if(!Number.isInteger(id)||id<1)return res.status(404).json({error:'Shopkeeper not found.'}); try{const s=await pool.query('SELECT * FROM shopkeepers WHERE id=$1',[id]); if(!s.rowCount)return res.status(404).json({error:'Shopkeeper not found.'}); const [pays, payments, stats]=await Promise.all([pool.query('SELECT * FROM purchases WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),pool.query('SELECT * FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),computeStats(id)]); const shop=mapShopkeeper(s.rows[0]); res.json({...shop,...stats,credit_status:creditStatus(stats.balance_kes,shop.credit_limit_kes),purchases:pays.rows,payments:payments.rows});}catch(e){console.error(e);res.status(500).json({error:'Failed to load shopkeeper.'});}});
+router.get('/:id', async(req,res)=>{const id=Number(req.params.id); if(!Number.isInteger(id)||id<1)return res.status(404).json({error:'Shopkeeper not found.'}); try{const s=await pool.query('SELECT * FROM shopkeepers WHERE id=$1',[id]); if(!s.rowCount)return res.status(404).json({error:'Shopkeeper not found.'}); const [pays, payments, manualSales, stats]=await Promise.all([pool.query('SELECT * FROM purchases WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),pool.query('SELECT * FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),pool.query('SELECT * FROM manual_sales WHERE shopkeeper_id=$1 ORDER BY sale_date DESC, created_at DESC, id DESC LIMIT 200',[id]),computeStats(id)]); const shop=mapShopkeeper(s.rows[0]); res.json({...shop,...stats,credit_status:creditStatus(stats.balance_kes,shop.credit_limit_kes),purchases:pays.rows,payments:payments.rows,manual_sales:manualSales.rows});}catch(e){console.error(e);res.status(500).json({error:'Failed to load shopkeeper.'});}});
 router.put('/:id', async (req, res) => {
   const id = Number(req.params.id);
 
