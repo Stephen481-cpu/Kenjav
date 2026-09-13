@@ -49,12 +49,16 @@ router.get('/daily', async (req, res) => {
             SELECT COALESCE(SUM(amount_kes), 0)
             FROM purchases
             WHERE (date AT TIME ZONE 'Africa/Nairobi')::date = $1::date
-          ) + COALESCE(
+          ),
+          0
+        )
+        + COALESCE(
           (
-            SELECT SUM(amount_kes)
+            SELECT COALESCE(SUM(amount_kes), 0)
             FROM manual_sales
             WHERE sale_date = $1::date
-          ), 0
+          ),
+          0
         ) AS sales_kes,
 
         COALESCE(
@@ -275,13 +279,17 @@ router.get('/monthly', async (req, res) => {
             FROM purchases
             WHERE (date AT TIME ZONE 'Africa/Nairobi')::date >= ($1 || '-01')::date
               AND (date AT TIME ZONE 'Africa/Nairobi')::date < (($1 || '-01')::date + INTERVAL '1 month')
-          ) + COALESCE(
+          ),
+          0
+        )
+        + COALESCE(
           (
-            SELECT SUM(amount_kes)
+            SELECT COALESCE(SUM(amount_kes), 0)
             FROM manual_sales
             WHERE sale_date >= ($1 || '-01')::date
               AND sale_date < (($1 || '-01')::date + INTERVAL '1 month')
-          ), 0
+          ),
+          0
         ) AS sales_kes,
 
         COALESCE(

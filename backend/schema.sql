@@ -207,7 +207,9 @@ CREATE INDEX idx_inventory_movements_product ON inventory_movements(wholesale_pr
 CREATE INDEX idx_inventory_movements_created ON inventory_movements(created_at DESC);
 
 -- Flexible manual / offline sales. Amount is the only required sale detail.
-CREATE TABLE manual_sales (
+-- This section is safe for both a fresh database and the older manual_sales
+-- table that used product_id/unit_price_kes/total_kes.
+CREATE TABLE IF NOT EXISTS manual_sales (
   id BIGSERIAL PRIMARY KEY,
   shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
   wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE SET NULL,
@@ -221,21 +223,40 @@ CREATE TABLE manual_sales (
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
--- Keep an older manual_sales table compatible if one was created by an earlier version.
-ALTER TABLE manual_sales ADD COLUMN shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL;
-ALTER TABLE manual_sales ADD COLUMN wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE SET NULL;
-ALTER TABLE manual_sales ADD COLUMN product_name TEXT;
-ALTER TABLE manual_sales ADD COLUMN quantity INTEGER;
-ALTER TABLE manual_sales ADD COLUMN amount_kes NUMERIC(12,2);
-ALTER TABLE manual_sales ADD COLUMN customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in';
-ALTER TABLE manual_sales ADD COLUMN payment_method VARCHAR(20);
-ALTER TABLE manual_sales ADD COLUMN sale_period VARCHAR(50);
-ALTER TABLE manual_sales ADD COLUMN sale_date DATE NOT NULL DEFAULT CURRENT_DATE;
-ALTER TABLE manual_sales ADD COLUMN notes TEXT;
-ALTER TABLE manual_sales ADD COLUMN created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
-ALTER TABLE manual_sales ALTER COLUMN shopkeeper_id DROP NOT NULL;
-ALTER TABLE manual_sales ALTER COLUMN product_name DROP NOT NULL;
-ALTER TABLE manual_sales ALTER COLUMN quantity DROP NOT NULL;
-ALTER TABLE manual_sales ALTER COLUMN amount_kes SET NOT NULL;
-CREATE INDEX idx_manual_sales_date ON manual_sales(sale_date DESC);
-CREATE INDEX idx_manual_sales_shopkeeper_date ON manual_sales(shopkeeper_id, sale_date DESC);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='manual_sales') THEN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='shopkeeper_id') THEN
+      ALTER TABLE manual_sales ADD COLUMN shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='wholesale_product_id') THEN
+      ALTER TABLE manual_sales ADD COLUMN wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='amount_kes') THEN
+      ALTER TABLE manual_sales ADD COLUMN amount_kes NUMERIC(12,2);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='customer_type') THEN
+      ALTER TABLE manual_sales ADD COLUMN customer_type VARCHAR(30) DEFAULT 'walk_in';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='sale_period') THEN
+      ALTER TABLE manual_sales ADD COLUMN sale_period VARCHAR(50);
+    END IF;
+
+    -- Migrate the old total_kes field into the new amount_kes field when present.
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='manual_sales' AND column_name='total_kes') THEN
+      EXECUTE 'UPDATE manual_sales SET amount_kes = total_kes WHERE amount_kes IS NULL';
+    END IF;
+
+    UPDATE manual_sales SET customer_type = 'walk_in' WHERE customer_type IS NULL;
+
+    ALTER TABLE manual_sales ALTER COLUMN shopkeeper_id DROP NOT NULL;
+    ALTER TABLE manual_sales ALTER COLUMN product_name DROP NOT NULL;
+    ALTER TABLE manual_sales ALTER COLUMN quantity DROP NOT NULL;
+    ALTER TABLE manual_sales ALTER COLUMN payment_method DROP NOT NULL;
+    ALTER TABLE manual_sales ALTER COLUMN amount_kes SET NOT NULL;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_manual_sales_date ON manual_sales(sale_date DESC);
+CREATE INDEX IF NOT EXISTS idx_manual_sales_shopkeeper_date ON manual_sales(shopkeeper_id, sale_date DESC);
