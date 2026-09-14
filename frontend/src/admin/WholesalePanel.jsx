@@ -72,6 +72,8 @@ const [manualSaleForm, setManualSaleForm] = useState({
   shopkeeper_id: '',
   wholesale_product_id: '',
   product_name: '',
+  customer_name: '',
+  reference: '',
   quantity: '',
   amount_kes: '',
   payment_method: '',
@@ -182,33 +184,27 @@ const [manualSaleForm, setManualSaleForm] = useState({
   };
 
   const editProduct = async p => {
-    const price = window.prompt(
-      'Wholesale price (KES)',
-      p.wholesale_price_kes
-    );
-
+    const name = p.product_id ? p.name : window.prompt('Product name', p.name || '');
+    if (name === null) return;
+    const price = window.prompt('Wholesale price (KES)', p.wholesale_price_kes);
     if (price === null) return;
-
-    const minimum = window.prompt(
-      'Low-stock threshold',
-      p.minimum_stock ?? 10
-    );
-
+    const minOrder = window.prompt('Minimum order quantity', p.min_order_quantity);
+    if (minOrder === null) return;
+    const stock = window.prompt('Current stock quantity', p.stock_quantity);
+    if (stock === null) return;
+    const minimum = window.prompt('Low-stock threshold', p.minimum_stock ?? 10);
     if (minimum === null) return;
-
-    try {
-      await updateProduct(p, {
-        ...p,
-        wholesale_price_kes: price,
-        minimum_stock: minimum
-      });
-
-      setMessage('Product settings updated.');
-      load();
-
-    } catch (e) {
-      setError(e.message);
+    const active = window.confirm('Press OK to keep this product ACTIVE. Press Cancel to deactivate it.');
+    let reason = '';
+    if (Number(stock) !== Number(p.stock_quantity)) {
+      reason = window.prompt('Reason for changing stock:', '') || '';
+      if (!reason.trim()) return setError('A reason is required when changing stock.');
     }
+    try {
+      await updateProduct(p, { ...p, product_name: name, wholesale_price_kes: price, min_order_quantity: minOrder, stock_quantity: stock, minimum_stock: minimum, is_active: active, stock_reason: reason.trim() });
+      setMessage('Wholesale product and inventory settings updated.');
+      await load();
+    } catch (e) { setError(e.message); }
   };
 
   /*
@@ -336,6 +332,8 @@ const [manualSaleForm, setManualSaleForm] = useState({
     try {
       await api.adminCreateManualSale(token, {
         customer_type: manualSaleForm.customer_type,
+        customer_name: manualSaleForm.customer_name?.trim() || undefined,
+        reference: manualSaleForm.reference?.trim() || undefined,
         shopkeeper_id: manualSaleForm.shopkeeper_id || undefined,
         wholesale_product_id: manualSaleForm.wholesale_product_id || undefined,
         product_name: manualSaleForm.product_name.trim() || undefined,
@@ -355,6 +353,8 @@ const [manualSaleForm, setManualSaleForm] = useState({
         quantity: '',
         amount_kes: '',
         payment_method: '',
+        customer_name: '',
+        reference: '',
         sale_period: '',
         sale_date: manualSaleForm.sale_date || todayNairobi(),
         notes: ''
@@ -469,6 +469,30 @@ const deleteExpense = async id => {
     setError(e.message);
   }
 };
+  const recordKeeperPayment = async s => {
+    const balance = Math.max(0, Number(s.balance_kes || 0));
+    if (balance <= 0) return setError('This shopkeeper has no outstanding debt.');
+    const amount = window.prompt(`Payment amount (KES). Outstanding: ${money(balance)}`, String(balance));
+    if (amount === null) return;
+    const method = window.prompt('Payment method: cash, mpesa, bank, or other', 'cash');
+    if (method === null) return;
+    const reference = window.prompt('Reference / M-Pesa receipt (optional)', '') || '';
+    try {
+      await api.adminRecordShopkeeperPayment(token, s.id, { amount_kes: Number(amount), method: method.trim().toLowerCase(), reference });
+      setMessage(`Payment recorded for ${s.name}.`);
+      await load();
+    } catch (e) { setError(e.message); }
+  };
+
+  const deleteKeeper = async s => {
+    if (!window.confirm(`PERMANENTLY DELETE the shopkeeper account for ${s.name}?\n\nThis cannot be undone. Open wholesale orders will prevent deletion.`)) return;
+    try {
+      await api.adminDeleteShopkeeper(token, s.id);
+      setMessage(`Shopkeeper account for ${s.name} deleted.`);
+      await load();
+    } catch (e) { setError(e.message); }
+  };
+
   const updateKeeper = async s => {
     const nextActive = !s.is_active;
     let deactivationReason = '';
@@ -697,12 +721,27 @@ const deleteExpense = async id => {
                   </button>
 
                   <button
+                    onClick={() => recordKeeperPayment(s)}
+                    disabled={Number(s.balance_kes || 0) <= 0}
+                    className="px-3 py-1.5 rounded-lg border text-sm font-semibold disabled:opacity-40"
+                  >
+                    Record Payment
+                  </button>
+
+                  <button
                     onClick={() => updateKeeper(s)}
                     className="px-3 py-1.5 rounded-lg border text-sm font-semibold"
                   >
                     {s.is_active
                       ? 'Deactivate'
                       : 'Activate'}
+                  </button>
+
+                  <button
+                    onClick={() => deleteKeeper(s)}
+                    className="px-3 py-1.5 rounded-lg border text-sm font-semibold text-red-700"
+                  >
+                    Delete Account
                   </button>
 
                 </div>
@@ -908,6 +947,8 @@ const deleteExpense = async id => {
                   onHistory={() =>
                     showHistory(p)
                   }
+
+                  onEdit={() => editProduct(p)}
                 />
               ))}
 
@@ -1081,6 +1122,11 @@ const deleteExpense = async id => {
               </select>
             </label>
 
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input type="text" required={false} label="Customer name (optional)" value={manualSaleForm.customer_name || ''} onChange={v => setManualSaleForm({ ...manualSaleForm, customer_name: v })} />
+              <Input type="text" required={false} label="Reference (optional)" value={manualSaleForm.reference || ''} onChange={v => setManualSaleForm({ ...manualSaleForm, reference: v })} />
+            </div>
+
             {manualSaleForm.customer_type === 'shopkeeper' && (
               <label className="block">
                 <span className="block text-sm font-semibold mb-1">Shopkeeper</span>
@@ -1112,6 +1158,8 @@ const deleteExpense = async id => {
                   <option value="">Not specified</option>
                   <option value="cash">Cash</option>
                   <option value="mpesa">M-Pesa</option>
+                  <option value="bank">Bank</option>
+                  <option value="credit">Credit / unpaid</option>
                   <option value="other">Other</option>
                 </select>
               </label>
@@ -1145,7 +1193,7 @@ const deleteExpense = async id => {
               </label>
 
               <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Product name (optional)" value={manualSaleForm.product_name} onChange={v => setManualSaleForm({ ...manualSaleForm, product_name: v })} />
+                <Input type="text" required={false} label="Product name (optional)" value={manualSaleForm.product_name} onChange={v => setManualSaleForm({ ...manualSaleForm, product_name: v })} />
                 <Input label="Quantity (optional)" value={manualSaleForm.quantity} onChange={v => setManualSaleForm({ ...manualSaleForm, quantity: v })} min="1" step="1" />
               </div>
             </div>
@@ -1179,6 +1227,8 @@ const deleteExpense = async id => {
                             {sale.customer_type === 'shopkeeper' ? `Shopkeeper: ${sale.shopkeeper_name || 'Unknown'}` : sale.customer_type === 'walk_in' ? 'Walk-in customer' : sale.customer_type === 'other' ? 'Other customer' : 'Customer not specified'}
                           </p>
                           {(sale.product_name || sale.catalogue_product_name) && <p className="text-sm">{sale.product_name || sale.catalogue_product_name}{sale.quantity ? ` × ${sale.quantity}` : ''}</p>}
+                          {sale.customer_name && <p className="text-xs mt-1" style={{ color: COLORS.muted }}>Customer: {sale.customer_name}</p>}
+                          {sale.reference && <p className="text-xs mt-1" style={{ color: COLORS.muted }}>Ref: {sale.reference}</p>}
                           {(sale.sale_period || sale.payment_method) && <p className="text-xs mt-1" style={{ color: COLORS.muted }}>{[sale.sale_period, sale.payment_method].filter(Boolean).join(' · ')}</p>}
                           {sale.notes && <p className="text-sm mt-1" style={{ color: COLORS.muted }}>{sale.notes}</p>}
                         </div>
@@ -1891,34 +1941,11 @@ const deleteExpense = async id => {
 }
 
 
-function Input({
-  label,
-  value,
-  onChange,
-  min = '0',
-  step = '1',
-  autoFocus
-}) {
+function Input({ label, value, onChange, min = '0', step = '1', autoFocus, type = 'number', required = true, placeholder = '' }) {
   return (
     <label className="block">
-
-      <span className="block text-sm font-semibold mb-1">
-        {label}
-      </span>
-
-      <input
-        required
-        autoFocus={autoFocus}
-        type="number"
-        min={min}
-        step={step}
-        value={value}
-        onChange={e =>
-          onChange(e.target.value)
-        }
-        className="w-full px-4 py-2.5 rounded-xl border"
-      />
-
+      <span className="block text-sm font-semibold mb-1">{label}</span>
+      <input required={required} autoFocus={autoFocus} type={type} min={type === 'number' ? min : undefined} step={type === 'number' ? step : undefined} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border" />
     </label>
   );
 }
@@ -1949,7 +1976,8 @@ function Inventory({
   product,
   onRestock,
   onAdjust,
-  onHistory
+  onHistory,
+  onEdit
 }) {
   return (
     <div className="border rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1993,6 +2021,13 @@ function Inventory({
           className="px-3 py-1.5 rounded-lg border text-sm font-semibold"
         >
           Remove Stock
+        </button>
+
+        <button
+          onClick={onEdit}
+          className="px-3 py-1.5 rounded-lg border text-sm font-semibold"
+        >
+          Edit All
         </button>
 
         <button

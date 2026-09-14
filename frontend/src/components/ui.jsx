@@ -7,7 +7,7 @@ const GRADIENTS = [
   { from: '#C9863F', to: '#2A1810' },
 ];
 
-// Product ids are MongoDB ObjectId strings (not numbers), so we hash the
+// Product ids are PostgreSQL identifiers (not necessarily numbers), so we hash the
 // string to pick a gradient rather than relying on numeric modulo. Any
 // number of admin-added products get a varied, consistent glyph
 // automatically, without needing per-product hardcoded colors.

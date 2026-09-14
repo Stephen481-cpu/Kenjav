@@ -241,6 +241,71 @@ router.post('/:id/purchases', async (req, res) => {
   }
 });
 
-router.post('/:id/payments', async(req,res)=>{const id=Number(req.params.id);const {amount_kes,notes,method='cash',reference}=req.body||{};if(Number(amount_kes)<=0)return res.status(400).json({error:'A positive amount is required.'});try{const {rows}=await pool.query('INSERT INTO payments(shopkeeper_id,amount_kes,notes,method,reference,status) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,Number(amount_kes),notes||null,method,reference||null,'confirmed']);res.status(201).json(rows[0]);}catch(e){console.error(e);res.status(500).json({error:'Failed to record payment.'});}});
+router.post('/:id/payments', async (req, res) => {
+  const id = Number(req.params.id);
+  const amount = Number(req.body?.amount_kes);
+  const method = String(req.body?.method || 'cash').trim().toLowerCase();
+  const reference = String(req.body?.reference || '').trim() || null;
+  const notes = String(req.body?.notes || '').trim() || null;
+  const allowedMethods = new Set(['cash', 'mpesa', 'bank', 'other']);
+
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid shopkeeper.' });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'A positive payment amount is required.' });
+  if (!allowedMethods.has(method)) return res.status(400).json({ error: 'Invalid payment method.' });
+
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0)
+        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0)
+        - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0) AS balance
+      FROM shopkeepers WHERE id=$1
+    `, [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Shopkeeper not found.' });
+    const balance = Math.max(0, Number(rows[0].balance));
+    if (balance <= 0) return res.status(400).json({ error: 'This shopkeeper has no outstanding debt.' });
+    if (amount > balance + 0.005) return res.status(400).json({ error: `Payment cannot exceed the outstanding debt of KES ${balance.toLocaleString()}.` });
+
+    const payment = await pool.query(`
+      INSERT INTO payments(shopkeeper_id,amount_kes,notes,method,reference,status)
+      VALUES($1,$2,$3,$4,$5,'confirmed') RETURNING *
+    `, [id, amount, notes, method, reference]);
+    await pool.query(`INSERT INTO wholesale_notifications(shopkeeper_id,title,message) VALUES($1,'Payment received',$2)`, [id, `KENJAV recorded your payment of KES ${amount.toLocaleString()}.`]);
+    return res.status(201).json(payment.rows[0]);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Failed to record payment.' });
+  }
+});
+
+router.delete('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid shopkeeper.' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const keeper = await client.query('SELECT id,name FROM shopkeepers WHERE id=$1 FOR UPDATE', [id]);
+    if (!keeper.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shopkeeper not found.' }); }
+    const balanceResult = await client.query(`SELECT GREATEST(0, COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0) + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0) - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0)) AS balance`, [id]);
+    if (Number(balanceResult.rows[0].balance) > 0.005) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `This shopkeeper still owes KES ${Number(balanceResult.rows[0].balance).toLocaleString()}. Record the payment and clear the debt before deleting the account.` });
+    }
+    const openOrders = await client.query(`SELECT COUNT(*)::int AS count FROM wholesale_orders WHERE shopkeeper_id=$1 AND status IN ('pending','approved','processing','ready')`, [id]);
+    if (Number(openOrders.rows[0].count) > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'This shopkeeper cannot be deleted while they have open wholesale orders. Complete or cancel those orders first.' });
+    }
+    await client.query('DELETE FROM shopkeepers WHERE id=$1', [id]);
+    await client.query('COMMIT');
+    return res.json({ message: 'Shopkeeper account deleted successfully.', id: String(id) });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    return res.status(500).json({ error: 'Failed to delete shopkeeper account.' });
+  } finally { client.release(); }
+});
+
+
 
 module.exports={router,computeStats,creditStatus};

@@ -2,65 +2,26 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, formatDate } from '../constants';
 
-const EMPTY_FORM = {
+const initialForm = {
   amount_kes: '',
   method: 'mpesa',
   reference: '',
-  notes: ''
+  notes: '',
 };
-
-function statusLabel(status) {
-  switch (status) {
-    case 'confirmed':
-      return 'Confirmed';
-
-    case 'processing':
-      return 'Processing';
-
-    case 'pending':
-      return 'Pending';
-
-    case 'rejected':
-      return 'Rejected';
-
-    case 'failed':
-      return 'Failed';
-
-    default:
-      return status || 'Unknown';
-  }
-}
-
-function statusClass(status) {
-  switch (status) {
-    case 'confirmed':
-      return 'text-[#1d7a5c]';
-
-    case 'processing':
-      return 'text-[#b9791a]';
-
-    case 'rejected':
-    case 'failed':
-      return 'text-[#e0356b]';
-
-    default:
-      return 'text-[#6b5744]';
-  }
-}
 
 export default function Payments({ token }) {
   const [payments, setPayments] = useState([]);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState(initialForm);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     try {
-      const data = await api.portalPayments(token);
-      setPayments(Array.isArray(data) ? data : []);
+      setError('');
+      setPayments(await api.portalPayments(token));
     } catch (e) {
-      setError(e.message);
+      setError(e.message || 'Failed to load payments.');
     }
   };
 
@@ -68,233 +29,111 @@ export default function Payments({ token }) {
     load();
   }, [token]);
 
-  const updateForm = (key, value) => {
-    setForm((current) => ({
-      ...current,
-      [key]: value
-    }));
-
+  const submit = async (e) => {
+    e.preventDefault();
     setMsg('');
     setError('');
-  };
-
-  const submit = async (event) => {
-    event.preventDefault();
-
-    setSubmitting(true);
-    setMsg('');
-    setError('');
+    setSaving(true);
 
     try {
-      const response = await api.requestPayment(
-        token,
-        {
-          ...form,
-          amount_kes: Number(form.amount_kes)
-        }
-      );
-
-      if (
-        form.method === 'mpesa' &&
-        response?.status === 'processing'
-      ) {
-        setMsg(
-          'M-Pesa prompt sent. Check your phone and enter your M-Pesa PIN.'
-        );
-      } else {
-        setMsg(
-          'Payment submitted for confirmation.'
-        );
-      }
-
-      setForm({
-        ...EMPTY_FORM
+      const result = await api.requestPayment(token, {
+        amount_kes: Number(form.amount_kes),
+        method: form.method,
+        reference: form.reference.trim(),
+        notes: form.notes.trim(),
       });
 
+      setForm(initialForm);
+      setMsg(
+        result?.message ||
+          (form.method === 'mpesa'
+            ? 'STK push sent. Check your phone and enter your M-Pesa PIN.'
+            : 'Payment submitted for confirmation.')
+      );
       await load();
     } catch (e) {
-      setError(e.message);
+      setError(e.message || 'Failed to submit payment.');
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
   return (
     <div>
-      <h1 className="title">
-        Payments
-      </h1>
-
+      <h1 className="title">Payments</h1>
       <p className="muted mb-5">
-        Make payments and keep your payment history in one place.
+        Pay your outstanding KENJAV balance and keep your payment history here.
       </p>
 
       <div className="grid lg:grid-cols-2 gap-5">
-
-        {/* PAYMENT FORM */}
-        <form
-          onSubmit={submit}
-          className="panel space-y-3"
-        >
-          <h2 className="section-title">
-            Make a payment
-          </h2>
+        <form onSubmit={submit} className="panel space-y-3">
+          <h2 className="section-title">Make a payment</h2>
 
           <input
             required
             type="number"
             min="1"
-            step="1"
+            step="0.01"
             placeholder="Amount (KES)"
             className="field"
             value={form.amount_kes}
-            onChange={(e) =>
-              updateForm(
-                'amount_kes',
-                e.target.value
-              )
-            }
+            onChange={(e) => setForm({ ...form, amount_kes: e.target.value })}
           />
 
           <select
             className="field"
             value={form.method}
-            onChange={(e) =>
-              updateForm(
-                'method',
-                e.target.value
-              )
-            }
+            onChange={(e) => setForm({ ...form, method: e.target.value })}
           >
-            <option value="mpesa">
-              M-Pesa
-            </option>
-
-            <option value="cash">
-              Cash
-            </option>
-
-            <option value="bank">
-              Bank
-            </option>
+            <option value="mpesa">M-Pesa</option>
+            <option value="cash">Cash</option>
+            <option value="bank">Bank</option>
+            <option value="other">Other</option>
           </select>
 
-          {form.method === 'mpesa' ? (
-            <p className="text-sm muted">
-              Your registered shopkeeper phone number will receive an M-Pesa STK prompt.
-            </p>
-          ) : (
-            <input
-              placeholder={
-                form.method === 'cash'
-                  ? 'Receipt / reference (optional)'
-                  : 'Bank transaction reference'
-              }
-              className="field"
-              value={form.reference}
-              onChange={(e) =>
-                updateForm(
-                  'reference',
-                  e.target.value
-                )
-              }
-            />
-          )}
+          <input
+            placeholder="Receipt / reference (optional)"
+            className="field"
+            value={form.reference}
+            onChange={(e) => setForm({ ...form, reference: e.target.value })}
+          />
 
           <textarea
             placeholder="Notes (optional)"
             className="field min-h-24"
             value={form.notes}
-            onChange={(e) =>
-              updateForm(
-                'notes',
-                e.target.value
-              )
-            }
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
 
-          {msg && (
-            <p className="text-sm text-[#1d7a5c]">
-              {msg}
-            </p>
-          )}
+          {msg && <p className="text-sm text-[#1d7a5c]">{msg}</p>}
+          {error && <p className="text-sm text-red-600">{error}</p>}
 
-          {error && (
-            <p className="text-sm text-[#e0356b]">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn-primary disabled:opacity-60"
-          >
-            {submitting
-              ? 'Processing...'
-              : form.method === 'mpesa'
-                ? 'Pay with M-Pesa'
-                : 'Submit Payment'}
+          <button className="btn-primary" disabled={saving}>
+            {saving ? 'Processing...' : 'Submit Payment'}
           </button>
         </form>
 
-
-        {/* PAYMENT HISTORY */}
         <div className="panel">
-          <h2 className="section-title">
-            Payment history
-          </h2>
+          <h2 className="section-title">Payment history</h2>
 
-          {payments.length === 0 ? (
-            <p className="muted text-sm">
-              No payments yet.
-            </p>
+          {!payments.length ? (
+            <p className="muted">No payments recorded yet.</p>
           ) : (
-            <div className="space-y-1">
+            <div>
               {payments.map((payment) => (
-                <div
-                  className="row"
-                  key={payment.id}
-                >
+                <div className="row" key={payment.id}>
                   <div>
-                    <b>
-                      {money(payment.amount_kes)}
-                    </b>
-
+                    <b>{money(payment.amount_kes)}</b>
                     <small>
-                      {formatDate(payment.date)}
-                      {' · '}
-                      {String(
-                        payment.method || ''
-                      ).toUpperCase()}
-                    </small>
-
-                    <small
-                      className={statusClass(
-                        payment.status
-                      )}
-                    >
-                      {statusLabel(
-                        payment.status
-                      )}
+                      {formatDate(payment.date)} · {payment.method} · {payment.status}
                     </small>
                   </div>
-
-                  <span className="muted text-xs text-right">
-                    {payment.reference || '—'}
-
-                    {payment.mpesa_receipt_number && (
-                      <span className="block mt-1">
-                        M-Pesa: {payment.mpesa_receipt_number}
-                      </span>
-                    )}
-                  </span>
+                  <span className="muted text-xs">{payment.reference || '—'}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
