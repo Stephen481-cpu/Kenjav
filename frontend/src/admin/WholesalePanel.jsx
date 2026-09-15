@@ -156,11 +156,12 @@ const [manualSaleForm, setManualSaleForm] = useState({
   */
   const updateProduct = (p, values) =>
     api.adminUpdateWholesaleProduct(token, p.id, {
+      product_name: values.product_name ?? p.product_name ?? p.name ?? '',
       wholesale_price_kes: Number(values.wholesale_price_kes),
       min_order_quantity: Number(values.min_order_quantity),
       stock_quantity: Number(values.stock_quantity),
       minimum_stock: Number(values.minimum_stock),
-      is_active: p.is_active,
+      is_active: values.is_active !== false,
       stock_reason: values.stock_reason || ''
     });
 
@@ -184,7 +185,7 @@ const [manualSaleForm, setManualSaleForm] = useState({
   };
 
   const editProduct = async p => {
-    const name = p.product_id ? p.name : window.prompt('Product name', p.name || '');
+    const name = window.prompt('Product name', p.name || p.product_name || '');
     if (name === null) return;
     const price = window.prompt('Wholesale price (KES)', p.wholesale_price_kes);
     if (price === null) return;
@@ -194,14 +195,14 @@ const [manualSaleForm, setManualSaleForm] = useState({
     if (stock === null) return;
     const minimum = window.prompt('Low-stock threshold', p.minimum_stock ?? 10);
     if (minimum === null) return;
-    const active = window.confirm('Press OK to keep this product ACTIVE. Press Cancel to deactivate it.');
+    const active = window.confirm('Keep this wholesale product ACTIVE? Click Cancel to deactivate it.');
     let reason = '';
     if (Number(stock) !== Number(p.stock_quantity)) {
       reason = window.prompt('Reason for changing stock:', '') || '';
       if (!reason.trim()) return setError('A reason is required when changing stock.');
     }
     try {
-      await updateProduct(p, { ...p, product_name: name, wholesale_price_kes: price, min_order_quantity: minOrder, stock_quantity: stock, minimum_stock: minimum, is_active: active, stock_reason: reason.trim() });
+      await updateProduct(p, { ...p, product_name: name.trim(), wholesale_price_kes: price, min_order_quantity: minOrder, stock_quantity: stock, minimum_stock: minimum, is_active: active, stock_reason: reason.trim() });
       setMessage('Wholesale product and inventory settings updated.');
       await load();
     } catch (e) { setError(e.message); }
@@ -697,19 +698,27 @@ const deleteExpense = async id => {
                       );
 
                       if (v === null) return;
+                      const limit = Number(v);
+                      if (!Number.isFinite(limit) || limit < 0) {
+                        setError('Credit limit must be a valid non-negative amount.');
+                        return;
+                      }
 
                       try {
                         await api.adminUpdateShopkeeper(
                           token,
                           s.id,
                           {
-                            ...s,
-                            credit_limit_kes:
-                              Number(v)
+                            name: s.name,
+                            phone: s.phone,
+                            location: s.location || '',
+                            credit_limit_kes: limit,
+                            is_active: s.is_active,
+                            deactivation_reason: s.deactivation_reason || ''
                           }
                         );
 
-                        load();
+                        await load();
 
                       } catch (e) {
                         setError(e.message);
@@ -1194,7 +1203,7 @@ const deleteExpense = async id => {
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <Input type="text" required={false} label="Product name (optional)" value={manualSaleForm.product_name} onChange={v => setManualSaleForm({ ...manualSaleForm, product_name: v })} />
-                <Input label="Quantity (optional)" value={manualSaleForm.quantity} onChange={v => setManualSaleForm({ ...manualSaleForm, quantity: v })} min="1" step="1" />
+                <Input required={false} label="Quantity (optional)" value={manualSaleForm.quantity} onChange={v => setManualSaleForm({ ...manualSaleForm, quantity: v })} min="1" step="1" />
               </div>
             </div>
 

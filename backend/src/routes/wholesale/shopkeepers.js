@@ -5,37 +5,62 @@ const { hashPassword } = require('./auth');
 const router = express.Router();
 
 function creditStatus(balanceKes, limitKes) {
-  if (!limitKes || limitKes <= 0) return { label: 'No Limit Set', color: 'neutral' };
-  if (balanceKes >= limitKes) return { label: 'Over Limit', color: 'red' };
-  if (balanceKes < limitKes * 0.5) return { label: 'Good Standing', color: 'green' };
+  if (!limitKes || limitKes <= 0) {
+    return { label: 'No Limit Set', color: 'neutral' };
+  }
+
+  if (balanceKes >= limitKes) {
+    return { label: 'Over Limit', color: 'red' };
+  }
+
+  if (balanceKes < limitKes * 0.5) {
+    return { label: 'Good Standing', color: 'green' };
+  }
+
   return { label: 'Approaching Limit', color: 'yellow' };
 }
 
 async function computeStats(id) {
-  const { rows } = await pool.query(`
-    SELECT
-      COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0)
-        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0) total_purchases_kes,
-      COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0) total_payments_kes,
-      COALESCE((SELECT SUM(quantity) FROM purchases WHERE shopkeeper_id=$1),0)
-        + COALESCE((SELECT SUM(quantity) FROM manual_sales WHERE shopkeeper_id=$1),0) total_quantity,
+  const { rows } = await pool.query(
+    `SELECT
+      COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1), 0)
+        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1), 0) AS total_purchases_kes,
+      COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS total_payments_kes,
+      COALESCE((SELECT SUM(quantity) FROM purchases WHERE shopkeeper_id=$1), 0)
+        + COALESCE((SELECT SUM(quantity) FROM manual_sales WHERE shopkeeper_id=$1), 0) AS total_quantity,
       (SELECT COUNT(*) FROM purchases WHERE shopkeeper_id=$1)
-        + (SELECT COUNT(*) FROM manual_sales WHERE shopkeeper_id=$1) order_count,
+        + (SELECT COUNT(*) FROM manual_sales WHERE shopkeeper_id=$1) AS order_count,
       GREATEST(
         COALESCE((SELECT MAX(date) FROM purchases WHERE shopkeeper_id=$1), '1970-01-01'::timestamptz),
         COALESCE((SELECT MAX(sale_date)::timestamptz FROM manual_sales WHERE shopkeeper_id=$1), '1970-01-01'::timestamptz)
-      ) last_purchase_at,
-      (SELECT date FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 1) last_payment_at`, [id]);
-  const r=rows[0]; const purchases=Number(r.total_purchases_kes), payments=Number(r.total_payments_kes);
-  return { total_purchases_kes:purchases,total_payments_kes:payments,balance_kes:purchases-payments,total_quantity:Number(r.total_quantity),order_count:Number(r.order_count),last_purchase_at:r.last_purchase_at,last_payment_at:r.last_payment_at };
+      ) AS last_purchase_at,
+      (SELECT date FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 1) AS last_payment_at
+    `,
+    [id]
+  );
+
+  const r = rows[0] || {};
+  const purchases = Number(r.total_purchases_kes || 0);
+  const payments = Number(r.total_payments_kes || 0);
+
+  return {
+    total_purchases_kes: purchases,
+    total_payments_kes: payments,
+    balance_kes: purchases - payments,
+    total_quantity: Number(r.total_quantity || 0),
+    order_count: Number(r.order_count || 0),
+    last_purchase_at: r.last_purchase_at || null,
+    last_payment_at: r.last_payment_at || null
+  };
 }
+
 function mapShopkeeper(r) {
   return {
     id: String(r.id),
     name: r.name,
     phone: r.phone,
     location: r.location,
-    credit_limit_kes: Number(r.credit_limit_kes),
+    credit_limit_kes: Number(r.credit_limit_kes || 0),
     is_active: r.is_active,
     deactivation_reason: r.deactivation_reason || null,
     deactivated_at: r.deactivated_at || null,
@@ -45,40 +70,100 @@ function mapShopkeeper(r) {
   };
 }
 
-router.get('/', async (req,res)=>{ try { const {rows}=await pool.query('SELECT * FROM shopkeepers ORDER BY name'); const out=[]; for(const r of rows){const s=await computeStats(r.id); out.push({...mapShopkeeper(r),...s,credit_status:creditStatus(s.balance_kes,Number(r.credit_limit_kes))});} res.json(out);} catch(e){console.error(e);res.status(500).json({error:'Failed to load shopkeepers.'});} });
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM shopkeepers ORDER BY name');
+    const out = [];
 
-router.post('/', async (req,res)=>{ const {name,phone,location,credit_limit_kes,password}=req.body||{}; if(!name||!phone) return res.status(400).json({error:'name and phone are required.'});
-  try { const {rows}=await pool.query(`INSERT INTO shopkeepers(name,phone,location,credit_limit_kes,password_hash) VALUES($1,$2,$3,$4,$5) RETURNING *`,[String(name).trim(),String(phone).trim(),location||'',Number(credit_limit_kes)||0,password?hashPassword(password):null]); res.status(201).json(mapShopkeeper(rows[0])); }
-  catch(e){console.error(e); if(e.code==='23505') return res.status(409).json({error:'A shopkeeper with that phone already exists.'}); res.status(500).json({error:'Failed to create shopkeeper.'});}
+    for (const r of rows) {
+      const s = await computeStats(r.id);
+      out.push({
+        ...mapShopkeeper(r),
+        ...s,
+        credit_status: creditStatus(s.balance_kes, Number(r.credit_limit_kes || 0))
+      });
+    }
+
+    return res.json(out);
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Failed to load shopkeepers.' });
+  }
 });
 
-router.get('/:id', async(req,res)=>{const id=Number(req.params.id); if(!Number.isInteger(id)||id<1)return res.status(404).json({error:'Shopkeeper not found.'}); try{const s=await pool.query('SELECT * FROM shopkeepers WHERE id=$1',[id]); if(!s.rowCount)return res.status(404).json({error:'Shopkeeper not found.'}); const [pays, payments, manualSales, stats]=await Promise.all([pool.query('SELECT * FROM purchases WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),pool.query('SELECT * FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200',[id]),pool.query('SELECT * FROM manual_sales WHERE shopkeeper_id=$1 ORDER BY sale_date DESC, created_at DESC, id DESC LIMIT 200',[id]),computeStats(id)]); const shop=mapShopkeeper(s.rows[0]); res.json({...shop,...stats,credit_status:creditStatus(stats.balance_kes,shop.credit_limit_kes),purchases:pays.rows,payments:payments.rows,manual_sales:manualSales.rows});}catch(e){console.error(e);res.status(500).json({error:'Failed to load shopkeeper.'});}});
-router.put('/:id', async (req, res) => {
-  const id = Number(req.params.id);
-
-  const {
-    name,
-    phone,
-    location,
-    credit_limit_kes,
-    is_active,
-    password,
-    deactivation_reason
-  } = req.body || {};
+router.post('/', async (req, res) => {
+  const { name, phone, location, credit_limit_kes, password } = req.body || {};
 
   if (!name || !phone) {
-    return res.status(400).json({
-      error: 'name and phone are required.'
+    return res.status(400).json({ error: 'name and phone are required.' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO shopkeepers (name, phone, location, credit_limit_kes, password_hash)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [String(name).trim(), String(phone).trim(), location || '', Number(credit_limit_kes) || 0, password ? hashPassword(password) : null]
+    );
+
+    return res.status(201).json(mapShopkeeper(rows[0]));
+  } catch (e) {
+    console.error(e);
+    if (e.code === '23505') {
+      return res.status(409).json({ error: 'A shopkeeper with that phone already exists.' });
+    }
+    return res.status(500).json({ error: 'Failed to create shopkeeper.' });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(404).json({ error: 'Shopkeeper not found.' });
+  }
+
+  try {
+    const shopQuery = await pool.query('SELECT * FROM shopkeepers WHERE id=$1', [id]);
+    if (!shopQuery.rowCount) {
+      return res.status(404).json({ error: 'Shopkeeper not found.' });
+    }
+
+    const [pays, payments, manualSales, stats] = await Promise.all([
+      pool.query('SELECT * FROM purchases WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200', [id]),
+      pool.query('SELECT * FROM payments WHERE shopkeeper_id=$1 ORDER BY date DESC LIMIT 200', [id]),
+      pool.query('SELECT * FROM manual_sales WHERE shopkeeper_id=$1 ORDER BY sale_date DESC, created_at DESC, id DESC LIMIT 200', [id]),
+      computeStats(id)
+    ]);
+
+    const shop = mapShopkeeper(shopQuery.rows[0]);
+    return res.json({
+      ...shop,
+      ...stats,
+      credit_status: creditStatus(stats.balance_kes, shop.credit_limit_kes),
+      purchases: pays.rows,
+      payments: payments.rows,
+      manual_sales: manualSales.rows
     });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Failed to load shopkeeper.' });
+  }
+});
+
+router.put('/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const { name, phone, location, credit_limit_kes, is_active, password, deactivation_reason } = req.body || {};
+
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'name and phone are required.' });
   }
 
   const active = is_active !== false;
   const reason = String(deactivation_reason || '').trim();
 
   if (!active && !reason) {
-    return res.status(400).json({
-      error: 'A reason is required when deactivating a shopkeeper.'
-    });
+    return res.status(400).json({ error: 'A reason is required when deactivating a shopkeeper.' });
   }
 
   try {
@@ -112,43 +197,29 @@ router.put('/:id', async (req, res) => {
 
     const { rows } = await pool.query(
       `UPDATE shopkeepers
-       SET ${fields.join(',')}
+       SET ${fields.join(', ')}
        WHERE id=$${values.length}
        RETURNING *`,
       values
     );
 
     if (!rows.length) {
-      return res.status(404).json({
-        error: 'Shopkeeper not found.'
-      });
+      return res.status(404).json({ error: 'Shopkeeper not found.' });
     }
 
-    res.json(mapShopkeeper(rows[0]));
+    return res.json(mapShopkeeper(rows[0]));
   } catch (e) {
     console.error(e);
-
     if (e.code === '23505') {
-      return res.status(409).json({
-        error: 'A shopkeeper with that phone already exists.'
-      });
+      return res.status(409).json({ error: 'A shopkeeper with that phone already exists.' });
     }
-
-    res.status(500).json({
-      error: 'Failed to update shopkeeper.'
-    });
+    return res.status(500).json({ error: 'Failed to update shopkeeper.' });
   }
 });
+
 router.post('/:id/purchases', async (req, res) => {
   const id = Number(req.params.id);
-  const {
-    product_name,
-    quantity,
-    amount_kes,
-    notes,
-    sale_date,
-    wholesale_product_id
-  } = req.body || {};
+  const { product_name, quantity, amount_kes, notes, sale_date, wholesale_product_id } = req.body || {};
 
   const cleanName = String(product_name || '').trim();
   const qty = Number(quantity);
@@ -159,23 +230,29 @@ router.post('/:id/purchases', async (req, res) => {
   if (!Number.isInteger(id) || id < 1) {
     return res.status(400).json({ error: 'Invalid shopkeeper.' });
   }
+
   if (!cleanName) {
     return res.status(400).json({ error: 'Product name is required.' });
   }
+
   if (!Number.isInteger(qty) || qty < 1) {
     return res.status(400).json({ error: 'Quantity must be a positive whole number.' });
   }
+
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ error: 'Sale amount must be greater than zero.' });
   }
+
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
     return res.status(400).json({ error: 'Sale date must use YYYY-MM-DD.' });
   }
+
   if (productId !== null && (!Number.isInteger(productId) || productId < 1)) {
     return res.status(400).json({ error: 'Invalid wholesale product.' });
   }
 
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
 
@@ -183,8 +260,14 @@ router.post('/:id/purchases', async (req, res) => {
       'SELECT id, is_active FROM shopkeepers WHERE id=$1 FOR UPDATE',
       [id]
     );
-    if (!keeper.rowCount) throw new Error('Shopkeeper not found.');
-    if (!keeper.rows[0].is_active) throw new Error('Cannot record a sale for an inactive shopkeeper.');
+
+    if (!keeper.rowCount) {
+      throw new Error('Shopkeeper not found.');
+    }
+
+    if (!keeper.rows[0].is_active) {
+      throw new Error('Cannot record a sale for an inactive shopkeeper.');
+    }
 
     let resolvedProductId = null;
     let resolvedName = cleanName;
@@ -197,8 +280,14 @@ router.post('/:id/purchases', async (req, res) => {
          FOR UPDATE`,
         [productId]
       );
-      if (!product.rowCount) throw new Error('Wholesale product not found.');
-      if (!product.rows[0].is_active) throw new Error('Selected wholesale product is inactive.');
+
+      if (!product.rowCount) {
+        throw new Error('Wholesale product not found.');
+      }
+
+      if (!product.rows[0].is_active) {
+        throw new Error('Selected wholesale product is inactive.');
+      }
 
       const stockBefore = Number(product.rows[0].stock_quantity);
       if (stockBefore < qty) {
@@ -217,7 +306,7 @@ router.post('/:id/purchases', async (req, res) => {
       await client.query(
         `INSERT INTO inventory_movements
          (wholesale_product_id, movement_type, quantity, stock_before, stock_after, reference_type, notes)
-         VALUES($1,'sale',$2,$3,$4,'manual_sale',$5)`,
+         VALUES ($1, 'sale', $2, $3, $4, 'manual_sale', $5)`,
         [resolvedProductId, qty, stockBefore, stockAfter, `Manual sale to shopkeeper #${id}.`]
       );
     }
@@ -225,7 +314,7 @@ router.post('/:id/purchases', async (req, res) => {
     const { rows } = await client.query(
       `INSERT INTO purchases
        (shopkeeper_id, product_name, quantity, amount_kes, notes, date)
-       VALUES($1,$2,$3,$4,$5,(($6::date)::timestamp AT TIME ZONE 'Africa/Nairobi'))
+       VALUES ($1, $2, $3, $4, $5, (($6::date)::timestamp AT TIME ZONE 'Africa/Nairobi'))
        RETURNING *`,
       [id, resolvedName, qty, amount, notes || null, dateValue]
     );
@@ -249,28 +338,54 @@ router.post('/:id/payments', async (req, res) => {
   const notes = String(req.body?.notes || '').trim() || null;
   const allowedMethods = new Set(['cash', 'mpesa', 'bank', 'other']);
 
-  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid shopkeeper.' });
-  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'A positive payment amount is required.' });
-  if (!allowedMethods.has(method)) return res.status(400).json({ error: 'Invalid payment method.' });
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Invalid shopkeeper.' });
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'A positive payment amount is required.' });
+  }
+
+  if (!allowedMethods.has(method)) {
+    return res.status(400).json({ error: 'Invalid payment method.' });
+  }
 
   try {
-    const { rows } = await pool.query(`
-      SELECT
-        COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0)
-        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0)
-        - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0) AS balance
-      FROM shopkeepers WHERE id=$1
-    `, [id]);
-    if (!rows.length) return res.status(404).json({ error: 'Shopkeeper not found.' });
-    const balance = Math.max(0, Number(rows[0].balance));
-    if (balance <= 0) return res.status(400).json({ error: 'This shopkeeper has no outstanding debt.' });
-    if (amount > balance + 0.005) return res.status(400).json({ error: `Payment cannot exceed the outstanding debt of KES ${balance.toLocaleString()}.` });
+    const { rows } = await pool.query(
+      `SELECT
+        COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1), 0)
+        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1), 0)
+        - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS balance
+      FROM shopkeepers WHERE id=$1`,
+      [id]
+    );
 
-    const payment = await pool.query(`
-      INSERT INTO payments(shopkeeper_id,amount_kes,notes,method,reference,status)
-      VALUES($1,$2,$3,$4,$5,'confirmed') RETURNING *
-    `, [id, amount, notes, method, reference]);
-    await pool.query(`INSERT INTO wholesale_notifications(shopkeeper_id,title,message) VALUES($1,'Payment received',$2)`, [id, `KENJAV recorded your payment of KES ${amount.toLocaleString()}.`]);
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Shopkeeper not found.' });
+    }
+
+    const balance = Math.max(0, Number(rows[0].balance));
+    if (balance <= 0) {
+      return res.status(400).json({ error: 'This shopkeeper has no outstanding debt.' });
+    }
+
+    if (amount > balance + 0.005) {
+      return res.status(400).json({ error: `Payment cannot exceed the outstanding debt of KES ${balance.toLocaleString()}.` });
+    }
+
+    const payment = await pool.query(
+      `INSERT INTO payments (shopkeeper_id, amount_kes, notes, method, reference, status)
+       VALUES ($1, $2, $3, $4, $5, 'confirmed')
+       RETURNING *`,
+      [id, amount, notes, method, reference]
+    );
+
+    await pool.query(
+      `INSERT INTO wholesale_notifications (shopkeeper_id, title, message)
+       VALUES ($1, 'Payment received', $2)`,
+      [id, `KENJAV recorded your payment of KES ${amount.toLocaleString()}.`]
+    );
+
     return res.status(201).json(payment.rows[0]);
   } catch (e) {
     console.error(e);
@@ -280,22 +395,56 @@ router.post('/:id/payments', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid shopkeeper.' });
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: 'Invalid shopkeeper.' });
+  }
+
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
-    const keeper = await client.query('SELECT id,name FROM shopkeepers WHERE id=$1 FOR UPDATE', [id]);
-    if (!keeper.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shopkeeper not found.' }); }
-    const balanceResult = await client.query(`SELECT GREATEST(0, COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1),0) + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1),0) - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status,'confirmed')='confirmed'),0)) AS balance`, [id]);
+
+    const keeper = await client.query(
+      'SELECT id, name FROM shopkeepers WHERE id=$1 FOR UPDATE',
+      [id]
+    );
+
+    if (!keeper.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Shopkeeper not found.' });
+    }
+
+    const balanceResult = await client.query(
+      `SELECT GREATEST(0,
+        COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=$1), 0)
+        + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=$1), 0)
+        - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=$1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0)
+      ) AS balance`,
+      [id]
+    );
+
     if (Number(balanceResult.rows[0].balance) > 0.005) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: `This shopkeeper still owes KES ${Number(balanceResult.rows[0].balance).toLocaleString()}. Record the payment and clear the debt before deleting the account.` });
+      return res.status(409).json({
+        error: `This shopkeeper still owes KES ${Number(balanceResult.rows[0].balance).toLocaleString()}. Record the payment and clear the debt before deleting the account.`
+      });
     }
-    const openOrders = await client.query(`SELECT COUNT(*)::int AS count FROM wholesale_orders WHERE shopkeeper_id=$1 AND status IN ('pending','approved','processing','ready')`, [id]);
+
+    const openOrders = await client.query(
+      `SELECT COUNT(*)::int AS count
+       FROM wholesale_orders
+       WHERE shopkeeper_id=$1 AND status IN ('pending', 'approved', 'processing', 'ready')`,
+      [id]
+    );
+
     if (Number(openOrders.rows[0].count) > 0) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'This shopkeeper cannot be deleted while they have open wholesale orders. Complete or cancel those orders first.' });
+      return res.status(409).json({
+        error: 'This shopkeeper cannot be deleted while they have open wholesale orders. Complete or cancel those orders first.'
+      });
     }
+
     await client.query('DELETE FROM shopkeepers WHERE id=$1', [id]);
     await client.query('COMMIT');
     return res.json({ message: 'Shopkeeper account deleted successfully.', id: String(id) });
@@ -303,9 +452,9 @@ router.delete('/:id', async (req, res) => {
     await client.query('ROLLBACK');
     console.error(e);
     return res.status(500).json({ error: 'Failed to delete shopkeeper account.' });
-  } finally { client.release(); }
+  } finally {
+    client.release();
+  }
 });
 
-
-
-module.exports={router,computeStats,creditStatus};
+module.exports = { router, computeStats, creditStatus };

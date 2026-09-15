@@ -6,14 +6,10 @@ const router = express.Router();
 
 router.use(adminAuth);
 
-/* =========================================================
-   WHOLESALE PRODUCTS
-========================================================= */
+/* ========================================================= WHOLESALE PRODUCTS ========================================================= */
 
-/*
-  Get wholesale products for the existing admin panel.
-  Includes stock quantity, minimum stock and stock status.
-*/
+// Get wholesale products for the existing admin panel. Includes stock
+// quantity, minimum stock and stock status.
 router.get('/products', async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -32,7 +28,7 @@ router.get('/products', async (req, res) => {
     `);
 
     res.json(
-      rows.map(r => ({
+      rows.map((r) => ({
         ...r,
         id: String(r.id),
         wholesale_price_kes: Number(r.wholesale_price_kes),
@@ -41,7 +37,6 @@ router.get('/products', async (req, res) => {
         minimum_stock: Number(r.minimum_stock || 10)
       }))
     );
-
   } catch (e) {
     console.error(e);
 
@@ -51,10 +46,7 @@ router.get('/products', async (req, res) => {
   }
 });
 
-
-/*
-  Create a wholesale product.
-*/
+// Create a wholesale product.
 router.post('/products', async (req, res) => {
   const {
     product_id,
@@ -108,10 +100,7 @@ router.post('/products', async (req, res) => {
     let resolvedName = product_name || null;
 
     if (product_id) {
-      const p = await client.query(
-        'SELECT name FROM products WHERE id=$1',
-        [product_id]
-      );
+      const p = await client.query('SELECT name FROM products WHERE id=$1', [product_id]);
 
       if (!p.rowCount) {
         await client.query('ROLLBACK');
@@ -138,20 +127,11 @@ router.post('/products', async (req, res) => {
       VALUES($1,$2,$3,$4,$5,$6)
       RETURNING *
       `,
-      [
-        product_id || null,
-        resolvedName,
-        price,
-        minOrder,
-        stock,
-        minimumStock
-      ]
+      [product_id || null, resolvedName, price, minOrder, stock, minimumStock]
     );
 
-    /*
-      Record the opening stock.
-      This makes the first stock quantity traceable.
-    */
+    // Record the opening stock.
+    // This makes the first stock quantity traceable.
     if (stock > 0) {
       await client.query(
         `
@@ -167,14 +147,7 @@ router.post('/products', async (req, res) => {
         )
         VALUES($1,'opening',$2,$3,$4,$5,$6)
         `,
-        [
-          rows[0].id,
-          stock,
-          0,
-          stock,
-          'admin',
-          'Opening stock when wholesale product was created.'
-        ]
+        [rows[0].id, stock, 0, stock, 'admin', 'Opening stock when wholesale product was created.']
       );
     }
 
@@ -188,7 +161,6 @@ router.post('/products', async (req, res) => {
       stock_quantity: Number(rows[0].stock_quantity),
       minimum_stock: Number(rows[0].minimum_stock)
     });
-
   } catch (e) {
     await client.query('ROLLBACK');
 
@@ -203,18 +175,14 @@ router.post('/products', async (req, res) => {
     res.status(500).json({
       error: 'Failed to create wholesale product.'
     });
-
   } finally {
     client.release();
   }
 });
 
+/* Update a wholesale product.
 
-/*
-  Update a wholesale product.
-
-  If stock changes, an inventory movement is automatically recorded.
-*/
+If stock changes, an inventory movement is automatically recorded. */
 router.put('/products/:id', async (req, res) => {
   const {
     wholesale_price_kes,
@@ -261,10 +229,7 @@ router.put('/products/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    /*
-      Lock the product so two simultaneous stock changes
-      cannot overwrite each other.
-    */
+    // Lock the product so two simultaneous stock changes cannot overwrite each other.
     const current = await client.query(
       `
       SELECT *
@@ -285,9 +250,7 @@ router.put('/products/:id', async (req, res) => {
 
     const oldStock = Number(current.rows[0].stock_quantity);
 
-    /*
-      A reason is mandatory for every manual stock change.
-    */
+    // A reason is mandatory for every manual stock change.
     if (newStock !== oldStock && !stockReason) {
       await client.query('ROLLBACK');
 
@@ -321,16 +284,10 @@ router.put('/products/:id', async (req, res) => {
       ]
     );
 
-    /*
-      Record manual stock changes.
-    */
+    // Record manual stock changes.
     if (newStock !== oldStock) {
       const difference = newStock - oldStock;
-
-      const movementType =
-        difference > 0
-          ? 'restock'
-          : 'adjustment';
+      const movementType = difference > 0 ? 'restock' : 'adjustment';
 
       await client.query(
         `
@@ -368,7 +325,6 @@ router.put('/products/:id', async (req, res) => {
       stock_quantity: Number(rows[0].stock_quantity),
       minimum_stock: Number(rows[0].minimum_stock)
     });
-
   } catch (e) {
     await client.query('ROLLBACK');
 
@@ -377,20 +333,14 @@ router.put('/products/:id', async (req, res) => {
     res.status(500).json({
       error: 'Failed to update wholesale product.'
     });
-
   } finally {
     client.release();
   }
 });
 
+/* ========================================================= INVENTORY ========================================================= */
 
-/* =========================================================
-   INVENTORY
-========================================================= */
-
-/*
-  Get complete inventory information.
-*/
+// Get complete inventory information.
 router.get('/inventory', async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -425,19 +375,16 @@ router.get('/inventory', async (req, res) => {
     `);
 
     res.json(
-      rows.map(r => ({
+      rows.map((r) => ({
         ...r,
         id: String(r.id),
-        product_id: r.product_id
-          ? String(r.product_id)
-          : null,
+        product_id: r.product_id ? String(r.product_id) : null,
         wholesale_price_kes: Number(r.wholesale_price_kes),
         min_order_quantity: Number(r.min_order_quantity),
         stock_quantity: Number(r.stock_quantity),
         minimum_stock: Number(r.minimum_stock || 10)
       }))
     );
-
   } catch (e) {
     console.error(e);
 
@@ -447,10 +394,7 @@ router.get('/inventory', async (req, res) => {
   }
 });
 
-
-/*
-  Get inventory movement history for a product.
-*/
+// Get inventory movement history for a product.
 router.get('/inventory/:id/history', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -483,18 +427,15 @@ router.get('/inventory/:id/history', async (req, res) => {
     );
 
     res.json(
-      rows.map(r => ({
+      rows.map((r) => ({
         ...r,
         id: String(r.id),
         quantity: Number(r.quantity),
         stock_before: Number(r.stock_before),
         stock_after: Number(r.stock_after),
-        reference_id: r.reference_id
-          ? String(r.reference_id)
-          : null
+        reference_id: r.reference_id ? String(r.reference_id) : null
       }))
     );
-
   } catch (e) {
     console.error(e);
 
@@ -504,10 +445,7 @@ router.get('/inventory/:id/history', async (req, res) => {
   }
 });
 
-
-/* =========================================================
-   WHOLESALE ORDERS
-========================================================= */
+/* ========================================================= WHOLESALE ORDERS ========================================================= */
 
 router.get('/orders', async (req, res) => {
   try {
@@ -534,10 +472,10 @@ router.get('/orders', async (req, res) => {
       FROM wholesale_orders o
 
       LEFT JOIN shopkeepers s
-        ON s.id=o.shopkeeper_id
+        ON s.id = o.shopkeeper_id
 
       LEFT JOIN wholesale_order_items i
-        ON i.order_id=o.id
+        ON i.order_id = o.id
 
       GROUP BY
         o.id,
@@ -548,13 +486,12 @@ router.get('/orders', async (req, res) => {
     `);
 
     res.json(
-      rows.map(r => ({
+      rows.map((r) => ({
         ...r,
         id: String(r.id),
         total_kes: Number(r.total_kes)
       }))
     );
-
   } catch (e) {
     console.error(e);
 
@@ -564,35 +501,18 @@ router.get('/orders', async (req, res) => {
   }
 });
 
+/* Update wholesale order status.
 
-/*
-  Update wholesale order status.
-
-  APPROVED:
-    Deduct stock.
-
-  CANCELLED:
-    Return stock if the order had already been approved.
-
-  COMPLETED:
-    Create purchase records.
-*/
+APPROVED: Deduct stock.
+CANCELLED: Return stock if the order had already been approved.
+COMPLETED: Create purchase records. */
 router.put('/orders/:id', async (req, res) => {
   const { status } = req.body || {};
 
-  const allowed = [
-    'pending',
-    'approved',
-    'processing',
-    'ready',
-    'completed',
-    'cancelled'
-  ];
+  const allowed = ['pending', 'approved', 'processing', 'ready', 'completed', 'cancelled'];
 
   if (!allowed.includes(status)) {
-    return res.status(400).json({
-      error: 'Invalid status.'
-    });
+    return res.status(400).json({ error: 'Invalid status.' });
   }
 
   const client = await pool.connect();
@@ -641,14 +561,12 @@ router.put('/orders/:id', async (req, res) => {
       });
     }
 
-
     /* ==========================================
        APPROVE ORDER
        CHECK AND DEDUCT STOCK
     ========================================== */
 
     if (status === 'approved' && previous !== 'approved') {
-
       const items = await client.query(
         `
         SELECT
@@ -661,10 +579,6 @@ router.put('/orders/:id', async (req, res) => {
       );
 
       for (const item of items.rows) {
-
-        /*
-          Lock the product before checking stock.
-        */
         const productResult = await client.query(
           `
           SELECT
@@ -679,26 +593,20 @@ router.put('/orders/:id', async (req, res) => {
         );
 
         if (!productResult.rowCount) {
-          throw new Error(
-            'One or more products in this order no longer exist.'
-          );
+          throw new Error('One or more products in this order no longer exist.');
         }
 
         const product = productResult.rows[0];
 
         if (!product.is_active) {
-          throw new Error(
-            'Cannot approve this order because one or more products are inactive.'
-          );
+          throw new Error('Cannot approve this order because one or more products are inactive.');
         }
 
         const stockBefore = Number(product.stock_quantity);
         const quantity = Number(item.quantity);
 
         if (stockBefore < quantity) {
-          throw new Error(
-            'Cannot approve this order because one or more products no longer have enough stock.'
-          );
+          throw new Error('Cannot approve this order because one or more products no longer have enough stock.');
         }
 
         const stockAfter = stockBefore - quantity;
@@ -711,15 +619,9 @@ router.put('/orders/:id', async (req, res) => {
             updated_at=NOW()
           WHERE id=$2
           `,
-          [
-            stockAfter,
-            item.wholesale_product_id
-          ]
+          [stockAfter, item.wholesale_product_id]
         );
 
-        /*
-          Record the sale/order stock movement.
-        */
         await client.query(
           `
           INSERT INTO inventory_movements
@@ -748,14 +650,12 @@ router.put('/orders/:id', async (req, res) => {
       }
     }
 
-
     /* ==========================================
        CANCEL APPROVED ORDER
        RETURN STOCK
     ========================================== */
 
     if (status === 'cancelled' && ['approved', 'processing', 'ready'].includes(previous)) {
-
       const items = await client.query(
         `
         SELECT
@@ -768,7 +668,6 @@ router.put('/orders/:id', async (req, res) => {
       );
 
       for (const item of items.rows) {
-
         const productResult = await client.query(
           `
           SELECT
@@ -782,17 +681,11 @@ router.put('/orders/:id', async (req, res) => {
         );
 
         if (!productResult.rowCount) {
-          throw new Error(
-            'Cannot return stock because a product no longer exists.'
-          );
+          throw new Error('Cannot return stock because a product no longer exists.');
         }
 
-        const stockBefore = Number(
-          productResult.rows[0].stock_quantity
-        );
-
+        const stockBefore = Number(productResult.rows[0].stock_quantity);
         const quantity = Number(item.quantity);
-
         const stockAfter = stockBefore + quantity;
 
         await client.query(
@@ -803,15 +696,9 @@ router.put('/orders/:id', async (req, res) => {
             updated_at=NOW()
           WHERE id=$2
           `,
-          [
-            stockAfter,
-            item.wholesale_product_id
-          ]
+          [stockAfter, item.wholesale_product_id]
         );
 
-        /*
-          Record returned stock.
-        */
         await client.query(
           `
           INSERT INTO inventory_movements
@@ -840,7 +727,6 @@ router.put('/orders/:id', async (req, res) => {
       }
     }
 
-
     /* ==========================================
        UPDATE ORDER STATUS
     ========================================== */
@@ -854,12 +740,8 @@ router.put('/orders/:id', async (req, res) => {
       WHERE id=$2
       RETURNING *
       `,
-      [
-        status,
-        req.params.id
-      ]
+      [status, req.params.id]
     );
-
 
     /* ==========================================
        COMPLETED ORDER
@@ -867,7 +749,6 @@ router.put('/orders/:id', async (req, res) => {
     ========================================== */
 
     if (status === 'completed' && previous !== 'completed') {
-
       const items = await client.query(
         `
         SELECT
@@ -881,7 +762,6 @@ router.put('/orders/:id', async (req, res) => {
       );
 
       for (const item of items.rows) {
-
         await client.query(
           `
           INSERT INTO purchases
@@ -907,9 +787,7 @@ router.put('/orders/:id', async (req, res) => {
       }
     }
 
-
     await client.query('COMMIT');
-
 
     /* ==========================================
        NOTIFY SHOPKEEPER
@@ -925,18 +803,11 @@ router.put('/orders/:id', async (req, res) => {
       )
       VALUES($1,$2,$3)
       `,
-      [
-        current[0].shopkeeper_id,
-        'Order update',
-        `Wholesale order #${req.params.id} is now ${status}.`
-      ]
+      [current[0].shopkeeper_id, 'Order update', `Wholesale order #${req.params.id} is now ${status}.`]
     );
 
-
     res.json(rows[0]);
-
   } catch (e) {
-
     await client.query('ROLLBACK');
 
     console.error(e);
@@ -944,20 +815,15 @@ router.put('/orders/:id', async (req, res) => {
     res.status(500).json({
       error: e.message || 'Failed to update order.'
     });
-
   } finally {
     client.release();
   }
 });
 
-
-/* =========================================================
-   PAYMENT REQUESTS
-========================================================= */
+/* ========================================================= PAYMENT REQUESTS ========================================================= */
 
 router.get('/payment-requests', async (req, res) => {
   try {
-
     const { rows } = await pool.query(`
       SELECT
         p.*,
@@ -967,7 +833,7 @@ router.get('/payment-requests', async (req, res) => {
       FROM payments p
 
       JOIN shopkeepers s
-        ON s.id=p.shopkeeper_id
+        ON s.id = p.shopkeeper_id
 
       WHERE p.status IN ('pending','processing')
 
@@ -975,9 +841,7 @@ router.get('/payment-requests', async (req, res) => {
     `);
 
     res.json(rows);
-
   } catch (e) {
-
     console.error(e);
 
     res.status(500).json({
@@ -986,19 +850,14 @@ router.get('/payment-requests', async (req, res) => {
   }
 });
 
-
 router.put('/payments/:id', async (req, res) => {
-
   const { status } = req.body || {};
 
   if (!['confirmed', 'rejected'].includes(status)) {
-    return res.status(400).json({
-      error: 'Invalid payment status.'
-    });
+    return res.status(400).json({ error: 'Invalid payment status.' });
   }
 
   try {
-
     const { rows } = await pool.query(
       `
       UPDATE payments
@@ -1006,10 +865,7 @@ router.put('/payments/:id', async (req, res) => {
       WHERE id=$2
       RETURNING *
       `,
-      [
-        status,
-        req.params.id
-      ]
+      [status, req.params.id]
     );
 
     if (!rows.length) {
@@ -1028,18 +884,11 @@ router.put('/payments/:id', async (req, res) => {
       )
       VALUES($1,'Payment update',$2)
       `,
-      [
-        rows[0].shopkeeper_id,
-        `Your payment of KES ${Number(
-          rows[0].amount_kes
-        ).toLocaleString()} was ${status}.`
-      ]
+      [rows[0].shopkeeper_id, `Your payment of KES ${Number(rows[0].amount_kes).toLocaleString()} was ${status}.`]
     );
 
     res.json(rows[0]);
-
   } catch (e) {
-
     console.error(e);
 
     res.status(500).json({
@@ -1047,6 +896,5 @@ router.put('/payments/:id', async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;
