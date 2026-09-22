@@ -1,11 +1,11 @@
-# KENJAV-M — Complete Customer + Admin + Wholesale System
+# KENJAV— Complete Customer + Admin + Wholesale System
 
-This is the consolidated KENJAV-M project. It contains the existing customer storefront, admin backend/panel, PostgreSQL/Aiven integration, M-Pesa integration, and the complete wholesale/shopkeeper portal in one project.
+This is the consolidated KENJAV project. It contains the existing customer storefront, admin backend/panel, PostgreSQL/Aiven integration, M-Pesa integration, and the complete wholesale/shopkeeper portal in one project.
 
 ## Structure
 
 ```text
-Kenjav-M/
+Kenjav/
 ├── frontend/      # Customer storefront + existing admin UI
 ├── backend/       # Shared Express API + PostgreSQL + M-Pesa + wholesale APIs
 ├── wholesale/     # Shopkeeper/admin wholesale portal
@@ -17,13 +17,14 @@ Kenjav-M/
 
 ## Databases
 
-PostgreSQL only. MongoDB/Mongoose is not used.
+PostgreSQL only.
 
 The wholesale tables live in the same PostgreSQL/Aiven database as the main KENJAV system.
 
 ## Run locally
 
 ### Backend
+
 ```bash
 cd backend
 npm install
@@ -31,6 +32,7 @@ npm run dev
 ```
 
 ### Customer frontend
+
 ```bash
 cd frontend
 npm install
@@ -38,6 +40,7 @@ npm run dev
 ```
 
 ### Wholesale portal
+
 ```bash
 cd wholesale
 npm install
@@ -46,9 +49,15 @@ npm run dev
 
 Set the required environment variables from the `.env.example`/documentation files. Never commit `.env` files or production credentials.
 
+For M-Pesa, set a long random `MPESA_CALLBACK_SECRET` and append it to the
+configured callback URL as `?token=<that-secret>`. For example:
+`https://api.example.com/api/mpesa/callback?token=your-long-random-secret`.
+The backend rejects callback requests that do not supply this token.
+
 ## Main wholesale portal
 
 Shopkeepers have:
+
 - Login
 - Dashboard
 - Wholesale products
