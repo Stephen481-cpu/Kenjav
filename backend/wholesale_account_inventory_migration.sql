@@ -21,6 +21,8 @@ ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS shopkeeper_id BIGINT;
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS wholesale_product_id BIGINT;
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS product_name TEXT;
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS quantity INTEGER;
+ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS unit_price_kes NUMERIC(12,2);
+ALTER TABLE manual_sales ALTER COLUMN unit_price_kes DROP NOT NULL;
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS amount_kes NUMERIC(12,2);
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS customer_type VARCHAR(30) DEFAULT 'walk_in';
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20);

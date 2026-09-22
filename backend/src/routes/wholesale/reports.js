@@ -445,6 +445,7 @@ router.post('/manual-sales', async (req, res) => {
     customer_type = 'walk_in', customer_name, payment_method, reference, sale_period, sale_date, notes } = req.body || {};
   const amount = Number(amount_kes);
   const qty = quantity === '' || quantity == null ? null : Number(quantity);
+  const unitPrice = qty === null ? null : Number((amount / qty).toFixed(2));
   const shopkeeperId = shopkeeper_id === '' || shopkeeper_id == null ? null : Number(shopkeeper_id);
   const productId = wholesale_product_id === '' || wholesale_product_id == null ? null : Number(wholesale_product_id);
   const date = String(sale_date || todayNairobi()).trim();
@@ -493,7 +494,7 @@ router.post('/manual-sales', async (req, res) => {
       await client.query('UPDATE wholesale_products SET stock_quantity=$1,updated_at=NOW() WHERE id=$2', [after,resolvedProductId]);
       await client.query(`INSERT INTO inventory_movements(wholesale_product_id,movement_type,quantity,stock_before,stock_after,reference_type,notes) VALUES($1,'sale',$2,$3,$4,'manual_sale',$5)`, [resolvedProductId,qty,before,after,`Manual sale${shopkeeperId ? ` to shopkeeper #${shopkeeperId}` : ''}.`]);
     }
-    const saleResult = await client.query(`INSERT INTO manual_sales(shopkeeper_id,wholesale_product_id,product_name,quantity,amount_kes,customer_type,customer_name,payment_method,reference,sale_period,sale_date,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::date,$12) RETURNING *`, [shopkeeperId,resolvedProductId,resolvedProductName,qty,amount,type,cleanCustomerName,method,cleanReference,sale_period ? String(sale_period) : null,date,cleanNotes]);
+    const saleResult = await client.query(`INSERT INTO manual_sales(shopkeeper_id,wholesale_product_id,product_name,quantity,unit_price_kes,amount_kes,customer_type,customer_name,payment_method,reference,sale_period,sale_date,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::date,$13) RETURNING *`, [shopkeeperId,resolvedProductId,resolvedProductName,qty,unitPrice,amount,type,cleanCustomerName,method,cleanReference,sale_period ? String(sale_period) : null,date,cleanNotes]);
     const sale = saleResult.rows[0];
     if (shopkeeperId !== null && method && method !== 'credit') {
       await client.query(`INSERT INTO payments(shopkeeper_id,amount_kes,notes,method,reference,status,manual_sale_id) VALUES($1,$2,$3,$4,$5,'confirmed',$6)`, [shopkeeperId,amount,`Payment attached to manual sale #${sale.id}.`,method,cleanReference,sale.id]);

@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS manual_sales ( id BIGSERIAL PRIMARY KEY,
 shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
 wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE
 SET NULL, product_name TEXT, quantity INTEGER CHECK (quantity IS NULL OR
-quantity > 0), amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
+quantity > 0), unit_price_kes NUMERIC(12,2), amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
 customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in', customer_name
 TEXT, payment_method VARCHAR(20), reference VARCHAR(100), sale_period
 VARCHAR(50), sale_date DATE NOT NULL DEFAULT CURRENT_DATE, notes TEXT,
@@ -177,6 +177,8 @@ IF NOT EXISTS mpesa_merchant_request_id VARCHAR(255); ALTER TABLE
 payments ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
 ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS unit_price_kes NUMERIC(12,2);
+ALTER TABLE manual_sales ALTER COLUMN unit_price_kes DROP NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_payments_manual_sale ON
 payments(manual_sale_id); CREATE INDEX IF NOT EXISTS
