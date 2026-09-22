@@ -7,8 +7,17 @@ const router = express.Router();
 router.use(wholesaleAuth, shopkeeperOnly);
 
 async function balance(id) {
-  const { rows } = await pool.query(`SELECT COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = $1), 0) + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = $1), 0) AS purchases, COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = $1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS payments`, [id]);
-  return { purchases: Number(rows[0].purchases), payments: Number(rows[0].payments), balance: Number(rows[0].purchases) - Number(rows[0].payments) };
+  const { rows } = await pool.query(`
+    SELECT
+      COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = $1), 0)
+      + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = $1), 0) AS purchases,
+      COALESCE((SELECT SUM(total_kes) FROM wholesale_orders WHERE shopkeeper_id = $1 AND status IN ('pending', 'approved', 'processing', 'ready')), 0) AS active_order_total,
+      COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = $1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS payments
+  `, [id]);
+  const purchases = Number(rows[0].purchases);
+  const activeOrderTotal = Number(rows[0].active_order_total);
+  const payments = Number(rows[0].payments);
+  return { purchases, active_order_total: activeOrderTotal, payments, balance: purchases + activeOrderTotal - payments };
 }
 
 router.get('/me', async (req, res) => {
@@ -110,17 +119,43 @@ const { rows: products } = await client.query(
     const cleanItems = [];
     let total = 0;
 
+    const pendingReservations = await client.query(
+      `SELECT i.wholesale_product_id, COALESCE(SUM(i.quantity), 0) AS reserved_quantity
+       FROM wholesale_order_items i
+       JOIN wholesale_orders o ON o.id = i.order_id
+       WHERE o.status = 'pending'
+         AND i.wholesale_product_id = ANY($1::bigint[])
+       GROUP BY i.wholesale_product_id`,
+      [[...requestedQuantities.keys()]]
+    );
+    const reservedByProduct = new Map(
+      pendingReservations.rows.map((row) => [Number(row.wholesale_product_id), Number(row.reserved_quantity)])
+    );
+
     for (const [productId, quantity] of requestedQuantities) {
       const product = productsById.get(productId);
       if (!product) throw new Error('One or more products are unavailable. Refresh the catalogue and try again.');
       if (quantity < Number(product.min_order_quantity)) throw new Error(`The minimum order for ${product.resolved_product_name} is ${product.min_order_quantity}.`);
-      if (Number(product.stock_quantity) < quantity) throw new Error(`${product.resolved_product_name} has only ${product.stock_quantity} in stock.`);
+      const availableStock = Number(product.stock_quantity) - (reservedByProduct.get(productId) || 0);
+      if (availableStock < quantity) throw new Error(`${product.resolved_product_name} has only ${Math.max(availableStock, 0)} available to order.`);
       const lineTotal = quantity * Number(product.wholesale_price_kes);
       total += lineTotal;
       cleanItems.push({ product, quantity, lineTotal });
     }
 
-    const { rows: creditRows } = await client.query(`SELECT s.credit_limit_kes, COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = s.id), 0) + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = s.id), 0) - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = s.id AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS balance FROM shopkeepers s WHERE s.id = $1`, [shopkeeperId]);
+    const { rows: creditRows } = await client.query(
+      `SELECT
+         s.credit_limit_kes,
+         COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = s.id), 0)
+         + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = s.id), 0)
+         + COALESCE((SELECT SUM(total_kes) FROM wholesale_orders WHERE shopkeeper_id = s.id AND status IN ('pending', 'approved', 'processing', 'ready')), 0)
+         - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = s.id AND COALESCE(status, 'confirmed') = 'confirmed'), 0)
+         AS balance
+       FROM shopkeepers s
+       WHERE s.id = $1
+       FOR UPDATE`,
+      [shopkeeperId]
+    );
     const creditLimit = Number(creditRows[0]?.credit_limit_kes || 0);
     const currentBalance = Number(creditRows[0]?.balance || 0);
     if (creditLimit > 0 && currentBalance + total > creditLimit) throw new Error(`This order would exceed your credit limit by KES ${(currentBalance + total - creditLimit).toLocaleString()}.`);
@@ -149,7 +184,7 @@ router.post('/payment-requests', async (req, res) => {
   if(!['mpesa','cash','bank','other'].includes(method))return res.status(400).json({error:'Invalid payment method.'});
   try{
     const id=req.wholesaleUser.shopkeeperId;
-    const {rows}=await pool.query(`SELECT s.phone,GREATEST(0,COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=s.id),0)+COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=s.id),0)-COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=s.id AND COALESCE(status,'confirmed') IN ('confirmed','processing')),0)) AS balance FROM shopkeepers s WHERE s.id=$1`,[id]);
+    const {rows}=await pool.query(`SELECT s.phone,GREATEST(0,COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id=s.id),0)+COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id=s.id),0)+COALESCE((SELECT SUM(total_kes) FROM wholesale_orders WHERE shopkeeper_id=s.id AND status IN ('pending','approved','processing','ready')),0)-COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id=s.id AND COALESCE(status,'confirmed') IN ('confirmed','processing')),0)) AS balance FROM shopkeepers s WHERE s.id=$1`,[id]);
     if(!rows.length)return res.status(404).json({error:'Account not found.'});
     const balance=Number(rows[0].balance); if(balance<=0)return res.status(400).json({error:'You have no outstanding debt.'}); if(amount>balance+0.005)return res.status(400).json({error:`Payment cannot exceed your outstanding debt of KES ${balance.toLocaleString()}.`});
     if(method==='mpesa'){

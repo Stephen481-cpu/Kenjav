@@ -1,7 +1,7 @@
-– KENJAV Wholesale shopkeeper deletion migration – Run this once on an
-existing PostgreSQL database. – Historical purchases and payments are
-retained with shopkeeper_id = NULL – after the corresponding shopkeeper
-account is deleted.
+-- KENJAV Wholesale shopkeeper deletion migration. Run this once on an
+-- existing PostgreSQL database. Historical purchases and payments are
+-- retained with shopkeeper_id = NULL after the corresponding shopkeeper
+-- account is deleted.
 
 BEGIN;
 

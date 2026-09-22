@@ -1,9 +1,8 @@
-– KENJAV PostgreSQL schema – Fresh PostgreSQL schema for the KENJAV
-retail + wholesale system. – Run with: node schema.js
+-- KENJAV PostgreSQL schema. Run with: node schema.js
 
 CREATE TABLE IF NOT EXISTS products ( id UUID PRIMARY KEY, slug
 VARCHAR(255) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, description
-TEXT NOT NULL DEFAULT ’’, price_kes INTEGER NOT NULL CHECK (price_kes >=
+TEXT NOT NULL DEFAULT '', price_kes INTEGER NOT NULL CHECK (price_kes >=
 0), tag VARCHAR(255), category VARCHAR(255), image_url TEXT, is_featured
 BOOLEAN NOT NULL DEFAULT FALSE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
 sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL
@@ -11,8 +10,8 @@ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT
 CURRENT_TIMESTAMP );
 
 CREATE TABLE IF NOT EXISTS offers ( id UUID PRIMARY KEY, badge
-VARCHAR(255) NOT NULL DEFAULT ‘HOT DEAL’, title VARCHAR(255) NOT NULL,
-description TEXT NOT NULL DEFAULT ’’, is_active BOOLEAN NOT NULL DEFAULT
+VARCHAR(255) NOT NULL DEFAULT 'HOT DEAL', title VARCHAR(255) NOT NULL,
+description TEXT NOT NULL DEFAULT '', is_active BOOLEAN NOT NULL DEFAULT
 TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP );
 
@@ -20,16 +19,16 @@ CREATE TABLE IF NOT EXISTS orders ( id UUID PRIMARY KEY, order_code
 VARCHAR(50) NOT NULL UNIQUE, customer_name VARCHAR(255) NOT NULL,
 customer_phone VARCHAR(50) NOT NULL, customer_email VARCHAR(255),
 fulfillment_type VARCHAR(20) NOT NULL CHECK (fulfillment_type IN
-(‘pickup’,‘delivery’)), delivery_address TEXT, notes TEXT,
+('pickup','delivery')), delivery_address TEXT, notes TEXT,
 marketing_opt_in BOOLEAN NOT NULL DEFAULT FALSE, subtotal_kes INTEGER
 NOT NULL CHECK (subtotal_kes >= 0), delivery_fee_kes INTEGER NOT NULL
 DEFAULT 0 CHECK (delivery_fee_kes >= 0), total_kes INTEGER NOT NULL
-CHECK (total_kes >= 0), status VARCHAR(20) NOT NULL DEFAULT ‘pending’
+CHECK (total_kes >= 0), status VARCHAR(20) NOT NULL DEFAULT 'pending'
 CHECK (status IN
-(‘pending’,‘preparing’,‘ready’,‘completed’,‘cancelled’)), payment_method
-VARCHAR(20) NOT NULL DEFAULT ‘cash’ CHECK (payment_method IN
-(‘cash’,‘mpesa’)), payment_status VARCHAR(20) NOT NULL DEFAULT ‘pending’
-CHECK (payment_status IN (‘pending’,‘processing’,‘paid’,‘failed’)),
+('pending','preparing','ready','completed','cancelled')), payment_method
+VARCHAR(20) NOT NULL DEFAULT 'cash' CHECK (payment_method IN
+('cash','mpesa')), payment_status VARCHAR(20) NOT NULL DEFAULT 'pending'
+CHECK (payment_status IN ('pending','processing','paid','failed')),
 mpesa_checkout_request_id VARCHAR(255), mpesa_merchant_request_id
 VARCHAR(255), mpesa_receipt_number VARCHAR(255), mpesa_phone
 VARCHAR(50), created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -53,7 +52,7 @@ idx_order_items_order ON order_items (order_id);
 
 CREATE TABLE IF NOT EXISTS shopkeepers ( id BIGSERIAL PRIMARY KEY, name
 VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, location TEXT NOT
-NULL DEFAULT ’’, credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK
+NULL DEFAULT '', credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK
 (credit_limit_kes >= 0), is_active BOOLEAN NOT NULL DEFAULT TRUE,
 deactivation_reason TEXT, deactivated_at TIMESTAMPTZ, password_hash
 TEXT, joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at
@@ -76,8 +75,8 @@ ON wholesale_products(product_id) WHERE product_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS wholesale_orders ( id BIGSERIAL PRIMARY KEY,
 shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
-status VARCHAR(20) NOT NULL DEFAULT ‘pending’ CHECK (status IN
-(‘pending’,‘approved’,‘processing’,‘ready’,‘completed’,‘cancelled’)),
+status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN
+('pending','approved','processing','ready','completed','cancelled')),
 total_kes NUMERIC(12,2) NOT NULL CHECK (total_kes >= 0), notes TEXT,
 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ
 NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT EXISTS
@@ -117,7 +116,7 @@ shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
 wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE
 SET NULL, product_name TEXT, quantity INTEGER CHECK (quantity IS NULL OR
 quantity > 0), amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
-customer_type VARCHAR(30) NOT NULL DEFAULT ‘walk_in’, customer_name
+customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in', customer_name
 TEXT, payment_method VARCHAR(20), reference VARCHAR(100), sale_period
 VARCHAR(50), sale_date DATE NOT NULL DEFAULT CURRENT_DATE, notes TEXT,
 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT
@@ -128,8 +127,8 @@ manual_sales(shopkeeper_id, sale_date DESC);
 CREATE TABLE IF NOT EXISTS payments ( id BIGSERIAL PRIMARY KEY,
 shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
 amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0), notes TEXT,
-method VARCHAR(20) NOT NULL DEFAULT ‘cash’, reference VARCHAR(100),
-status VARCHAR(20) NOT NULL DEFAULT ‘confirmed’, date TIMESTAMPTZ NOT
+method VARCHAR(20) NOT NULL DEFAULT 'cash', reference VARCHAR(100),
+status VARCHAR(20) NOT NULL DEFAULT 'confirmed', date TIMESTAMPTZ NOT
 NULL DEFAULT NOW(), manual_sale_id BIGINT REFERENCES manual_sales(id) ON
 DELETE CASCADE, mpesa_checkout_request_id VARCHAR(255),
 mpesa_merchant_request_id VARCHAR(255), mpesa_receipt_number
@@ -138,10 +137,14 @@ idx_payments_shopkeeper_date ON payments(shopkeeper_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_payments_mpesa_checkout ON
 payments(mpesa_checkout_request_id); CREATE INDEX IF NOT EXISTS
 idx_payments_manual_sale ON payments(manual_sale_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_mpesa_receipt_unique ON
+orders(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_mpesa_receipt_unique ON
+payments(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS wholesale_expenses ( id BIGSERIAL PRIMARY
 KEY, amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0), category
-VARCHAR(100) NOT NULL, description TEXT NOT NULL DEFAULT ’’,
+VARCHAR(100) NOT NULL, description TEXT NOT NULL DEFAULT '',
 expense_date DATE NOT NULL DEFAULT CURRENT_DATE, created_at TIMESTAMPTZ
 NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT EXISTS
 idx_wholesale_expenses_date ON wholesale_expenses(expense_date DESC);
@@ -152,7 +155,7 @@ CREATE TABLE IF NOT EXISTS inventory_movements ( id BIGSERIAL PRIMARY
 KEY, wholesale_product_id BIGINT NOT NULL REFERENCES
 wholesale_products(id) ON DELETE CASCADE, movement_type VARCHAR(20) NOT
 NULL CHECK (movement_type IN
-(‘opening’,‘restock’,‘sale’,‘adjustment’,‘return’)), quantity INTEGER
+('opening','restock','sale','adjustment','return')), quantity INTEGER
 NOT NULL, stock_before INTEGER NOT NULL CHECK (stock_before >= 0),
 stock_after INTEGER NOT NULL CHECK (stock_after >= 0), reference_type
 VARCHAR(50), reference_id BIGINT, notes TEXT, created_at TIMESTAMPTZ NOT
@@ -162,8 +165,8 @@ inventory_movements(wholesale_product_id, created_at DESC); CREATE INDEX
 IF NOT EXISTS idx_inventory_movements_created ON
 inventory_movements(created_at DESC);
 
-– Compatibility additions for an older KENJAV PostgreSQL database. ALTER
-TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivation_reason TEXT;
+-- Compatibility additions for an older KENJAV PostgreSQL database.
+ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivation_reason TEXT;
 ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivated_at
 TIMESTAMPTZ; ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS
 customer_name TEXT; ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS
@@ -173,6 +176,7 @@ mpesa_checkout_request_id VARCHAR(255); ALTER TABLE payments ADD COLUMN
 IF NOT EXISTS mpesa_merchant_request_id VARCHAR(255); ALTER TABLE
 payments ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
+ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_payments_manual_sale ON
 payments(manual_sale_id); CREATE INDEX IF NOT EXISTS

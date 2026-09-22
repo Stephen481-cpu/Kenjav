@@ -1,6 +1,8 @@
 -- KENJAV upgrade for an existing PostgreSQL database.
 -- Run this once if the database was created with an older KENJAV schema.
 
+ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
 ALTER TABLE wholesale_products ADD COLUMN IF NOT EXISTS product_name TEXT;
 ALTER TABLE wholesale_products ADD COLUMN IF NOT EXISTS wholesale_price_kes NUMERIC(12,2) DEFAULT 0;
 ALTER TABLE wholesale_products ADD COLUMN IF NOT EXISTS min_order_quantity INTEGER DEFAULT 1;
@@ -43,6 +45,8 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
 
 CREATE INDEX IF NOT EXISTS idx_payments_manual_sale ON payments(manual_sale_id);
 CREATE INDEX IF NOT EXISTS idx_payments_mpesa_checkout ON payments(mpesa_checkout_request_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_mpesa_receipt_unique ON orders(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_mpesa_receipt_unique ON payments(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
 
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_manual_sale_id_fkey;
 ALTER TABLE payments ADD CONSTRAINT payments_manual_sale_id_fkey FOREIGN KEY (manual_sale_id) REFERENCES manual_sales(id) ON DELETE CASCADE;

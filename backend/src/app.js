@@ -17,6 +17,7 @@ const wholesaleShopkeepersRouter = require('./routes/wholesale/shopkeepers').rou
 const wholesaleReportsRouter = require('./routes/wholesale/reports');
 const wholesalePortalRouter = require('./routes/wholesale/portal');
 const wholesaleAdminRouter = require('./routes/wholesale/admin');
+const { createRateLimit } = require('./middleware/rateLimit');
 
 
 const app = express();
@@ -36,21 +37,21 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' }));
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'kenjav-backend', database: 'postgresql' }));
 
 app.use('/api/products', productsRouter);
 app.use('/api/offers', offersRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/mpesa', mpesaCallbackRouter);
-app.use('/api/ai', aiAssistantRouter);
-app.use('/api/admin', adminAuthRouter);
+app.use('/api/ai', createRateLimit({ windowMs: 60_000, max: 20 }), aiAssistantRouter);
+app.use('/api/admin', createRateLimit({ windowMs: 15 * 60_000, max: 10 }), adminAuthRouter);
 app.use('/api/admin/products', adminAuth, adminProductsRouter);
 app.use('/api/admin/offers', adminAuth, adminOffersRouter);
 app.use('/api/admin/orders', adminAuth, adminOrdersRouter);
 app.use('/api/admin/customers', adminAuth, adminCustomersRouter);
 
-app.use('/api/wholesale/auth', wholesaleAuthRouter);
+app.use('/api/wholesale/auth', createRateLimit({ windowMs: 15 * 60_000, max: 10 }), wholesaleAuthRouter);
 app.use('/api/wholesale/shopkeepers', adminAuth, wholesaleShopkeepersRouter);
 app.use('/api/wholesale/reports', adminAuth, wholesaleReportsRouter);
 app.use('/api/wholesale/admin', wholesaleAdminRouter);
