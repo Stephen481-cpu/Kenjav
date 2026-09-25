@@ -7,12 +7,18 @@ const router = express.Router();
 router.use(wholesaleAuth, shopkeeperOnly);
 
 async function balance(id) {
+  // 'processing' payments (an M-Pesa STK push that was sent but not yet
+  // confirmed) are counted alongside 'confirmed' ones here so this always
+  // matches the balance used by /orders and /payment-requests below -
+  // otherwise the dashboard shows a higher debt than what those endpoints
+  // actually check against, and shopkeepers see a confusing "cannot exceed
+  // your outstanding debt of KES X" for an amount lower than their balance.
   const { rows } = await pool.query(`
     SELECT
       COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = $1), 0)
       + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = $1), 0) AS purchases,
       COALESCE((SELECT SUM(total_kes) FROM wholesale_orders WHERE shopkeeper_id = $1 AND status IN ('pending', 'approved', 'processing', 'ready')), 0) AS active_order_total,
-      COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = $1 AND COALESCE(status, 'confirmed') = 'confirmed'), 0) AS payments
+      COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = $1 AND COALESCE(status, 'confirmed') IN ('confirmed', 'processing')), 0) AS payments
   `, [id]);
   const purchases = Number(rows[0].purchases);
   const activeOrderTotal = Number(rows[0].active_order_total);
@@ -149,7 +155,7 @@ const { rows: products } = await client.query(
          COALESCE((SELECT SUM(amount_kes) FROM purchases WHERE shopkeeper_id = s.id), 0)
          + COALESCE((SELECT SUM(amount_kes) FROM manual_sales WHERE shopkeeper_id = s.id), 0)
          + COALESCE((SELECT SUM(total_kes) FROM wholesale_orders WHERE shopkeeper_id = s.id AND status IN ('pending', 'approved', 'processing', 'ready')), 0)
-         - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = s.id AND COALESCE(status, 'confirmed') = 'confirmed'), 0)
+         - COALESCE((SELECT SUM(amount_kes) FROM payments WHERE shopkeeper_id = s.id AND COALESCE(status, 'confirmed') IN ('confirmed', 'processing')), 0)
          AS balance
        FROM shopkeepers s
        WHERE s.id = $1

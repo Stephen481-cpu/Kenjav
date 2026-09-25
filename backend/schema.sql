@@ -180,6 +180,33 @@ ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS unit_price_kes NUMERIC(12,2);
 ALTER TABLE manual_sales ALTER COLUMN unit_price_kes DROP NOT NULL;
 
+-- Allow shopkeeper accounts to be deleted while keeping historical records.
+-- Dropping NOT NULL alone is not enough: a plain REFERENCES column defaults
+-- to ON DELETE NO ACTION, which still blocks the delete outright. The
+-- foreign key itself must be rebuilt with ON DELETE SET NULL.
+ALTER TABLE purchases ALTER COLUMN shopkeeper_id DROP NOT NULL;
+ALTER TABLE purchases DROP CONSTRAINT IF EXISTS purchases_shopkeeper_id_fkey;
+ALTER TABLE purchases ADD CONSTRAINT purchases_shopkeeper_id_fkey
+  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
+
+ALTER TABLE payments ALTER COLUMN shopkeeper_id DROP NOT NULL;
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_shopkeeper_id_fkey;
+ALTER TABLE payments ADD CONSTRAINT payments_shopkeeper_id_fkey
+  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
+
+ALTER TABLE manual_sales ALTER COLUMN shopkeeper_id DROP NOT NULL;
+ALTER TABLE manual_sales DROP CONSTRAINT IF EXISTS manual_sales_shopkeeper_id_fkey;
+ALTER TABLE manual_sales ADD CONSTRAINT manual_sales_shopkeeper_id_fkey
+  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
+ALTER TABLE manual_sales DROP CONSTRAINT IF EXISTS manual_sales_wholesale_product_id_fkey;
+ALTER TABLE manual_sales ADD CONSTRAINT manual_sales_wholesale_product_id_fkey
+  FOREIGN KEY (wholesale_product_id) REFERENCES wholesale_products(id) ON DELETE SET NULL;
+
+ALTER TABLE wholesale_orders ALTER COLUMN shopkeeper_id DROP NOT NULL;
+ALTER TABLE wholesale_orders DROP CONSTRAINT IF EXISTS wholesale_orders_shopkeeper_id_fkey;
+ALTER TABLE wholesale_orders ADD CONSTRAINT wholesale_orders_shopkeeper_id_fkey
+  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_payments_manual_sale ON
 payments(manual_sale_id); CREATE INDEX IF NOT EXISTS
 idx_payments_mpesa_checkout ON payments(mpesa_checkout_request_id);

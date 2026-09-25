@@ -59,6 +59,12 @@ router.post('/', async (req, res) => {
 
     for (let attempt = 0; attempt < 5 && !order; attempt++) {
       const orderCode = generateOrderCode();
+      // A collision on order_code aborts the whole transaction in Postgres,
+      // not just the failed statement, so every retry must happen inside its
+      // own SAVEPOINT and roll back to that savepoint (not the outer BEGIN)
+      // on failure - otherwise the 2nd+ attempt fails with "current
+      // transaction is aborted" instead of actually retrying.
+      await client.query('SAVEPOINT order_attempt');
       try {
         const { rows } = await client.query(
           `INSERT INTO orders
@@ -78,7 +84,10 @@ router.post('/', async (req, res) => {
             [order.id, item.product_id, item.product_name, item.unit_price_kes, item.quantity, item.line_total_kes]
           );
         }
+        await client.query('RELEASE SAVEPOINT order_attempt');
       } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT order_attempt');
+        order = null;
         if (err.code === '23505') continue;
         throw err;
       }

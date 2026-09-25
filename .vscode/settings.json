@@ -1,0 +1,10 @@
+{
+  // backend/*.sql files (and the other *.sql files in this repo) are PostgreSQL
+  // scripts executed via the "pg" driver (see backend/schema.js). They are not
+  // SQL Server / T-SQL scripts, so "CREATE TABLE IF NOT EXISTS ..." and other
+  // Postgres-only syntax is valid even though the ms-mssql extension's T-SQL
+  // parser flags it (e.g. "Incorrect syntax near 'IF'."). Disable its
+  // error-checking for this workspace so those false positives don't show up
+  // in the Problems panel.
+  "mssql.intelliSense.enableErrorChecking": false
+}

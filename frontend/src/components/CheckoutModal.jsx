@@ -3,7 +3,7 @@ import { X, Loader2 } from 'lucide-react';
 import { COLORS, money, isValidPhone } from '../constants';
 import { Field } from './ui';
 
-const emptyForm = { name: '', phone: '', email: '', fulfillment: 'pickup', address: '', notes: '', payment_method: 'cash' };
+const emptyForm = { name: '', phone: '', email: '', fulfillment: 'pickup', address: '', notes: '', payment_method: 'cash', marketing_opt_in: false };
 
 export default function CheckoutModal({ open, onClose, cart, subtotal, onSubmit, submitting, submitError }) {
   const [form, setForm] = useState(emptyForm);
