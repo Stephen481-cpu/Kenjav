@@ -1,212 +1,690 @@
--- KENJAV PostgreSQL schema. Run with: node schema.js
+-- ============================================================
+-- KENJAV PostgreSQL DATABASE SCHEMA
+-- ============================================================
 
-CREATE TABLE IF NOT EXISTS products ( id UUID PRIMARY KEY, slug
-VARCHAR(255) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, description
-TEXT NOT NULL DEFAULT '', price_kes INTEGER NOT NULL CHECK (price_kes >=
-0), tag VARCHAR(255), category VARCHAR(255), image_url TEXT, is_featured
-BOOLEAN NOT NULL DEFAULT FALSE, is_active BOOLEAN NOT NULL DEFAULT TRUE,
-sort_order INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL
-DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT
-CURRENT_TIMESTAMP );
 
-CREATE TABLE IF NOT EXISTS offers ( id UUID PRIMARY KEY, badge
-VARCHAR(255) NOT NULL DEFAULT 'HOT DEAL', title VARCHAR(255) NOT NULL,
-description TEXT NOT NULL DEFAULT '', is_active BOOLEAN NOT NULL DEFAULT
-TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP );
+-- ============================================================
+-- 1. PRODUCTS
+-- ============================================================
 
-CREATE TABLE IF NOT EXISTS orders ( id UUID PRIMARY KEY, order_code
-VARCHAR(50) NOT NULL UNIQUE, customer_name VARCHAR(255) NOT NULL,
-customer_phone VARCHAR(50) NOT NULL, customer_email VARCHAR(255),
-fulfillment_type VARCHAR(20) NOT NULL CHECK (fulfillment_type IN
-('pickup','delivery')), delivery_address TEXT, notes TEXT,
-marketing_opt_in BOOLEAN NOT NULL DEFAULT FALSE, subtotal_kes INTEGER
-NOT NULL CHECK (subtotal_kes >= 0), delivery_fee_kes INTEGER NOT NULL
-DEFAULT 0 CHECK (delivery_fee_kes >= 0), total_kes INTEGER NOT NULL
-CHECK (total_kes >= 0), status VARCHAR(20) NOT NULL DEFAULT 'pending'
-CHECK (status IN
-('pending','preparing','ready','completed','cancelled')), payment_method
-VARCHAR(20) NOT NULL DEFAULT 'cash' CHECK (payment_method IN
-('cash','mpesa')), payment_status VARCHAR(20) NOT NULL DEFAULT 'pending'
-CHECK (payment_status IN ('pending','processing','paid','failed')),
-mpesa_checkout_request_id VARCHAR(255), mpesa_merchant_request_id
-VARCHAR(255), mpesa_receipt_number VARCHAR(255), mpesa_phone
-VARCHAR(50), created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP );
+CREATE TABLE IF NOT EXISTS products (
+    id UUID PRIMARY KEY,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    price_kes INTEGER NOT NULL CHECK (price_kes >= 0),
+    tag VARCHAR(255),
+    category VARCHAR(255),
+    image_url TEXT,
+    is_featured BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
-CREATE TABLE IF NOT EXISTS order_items ( id UUID PRIMARY KEY, order_id
-UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE, product_id UUID
-REFERENCES products(id) ON DELETE SET NULL, product_name VARCHAR(255)
-NOT NULL, unit_price_kes INTEGER NOT NULL CHECK (unit_price_kes >= 0),
-quantity INTEGER NOT NULL CHECK (quantity >= 1), line_total_kes INTEGER
-NOT NULL CHECK (line_total_kes >= 0) );
 
-CREATE INDEX IF NOT EXISTS idx_products_active_sort ON products
-(is_active, sort_order, id); CREATE INDEX IF NOT EXISTS
-idx_offers_active_created ON offers (is_active, created_at DESC); CREATE
-INDEX IF NOT EXISTS idx_orders_created ON orders (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_orders_code ON orders (order_code);
-CREATE INDEX IF NOT EXISTS idx_orders_mpesa_checkout ON orders
-(mpesa_checkout_request_id); CREATE INDEX IF NOT EXISTS
-idx_order_items_order ON order_items (order_id);
+-- ============================================================
+-- 2. OFFERS
+-- ============================================================
 
-CREATE TABLE IF NOT EXISTS shopkeepers ( id BIGSERIAL PRIMARY KEY, name
-VARCHAR(255) NOT NULL, phone VARCHAR(50) NOT NULL, location TEXT NOT
-NULL DEFAULT '', credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK
-(credit_limit_kes >= 0), is_active BOOLEAN NOT NULL DEFAULT TRUE,
-deactivation_reason TEXT, deactivated_at TIMESTAMPTZ, password_hash
-TEXT, joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at
-TIMESTAMPTZ NOT NULL DEFAULT NOW() ); CREATE UNIQUE INDEX IF NOT EXISTS
-idx_shopkeepers_phone_unique ON shopkeepers(phone);
+CREATE TABLE IF NOT EXISTS offers (
+    id UUID PRIMARY KEY,
+    badge VARCHAR(255) NOT NULL DEFAULT 'HOT DEAL',
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
-CREATE TABLE IF NOT EXISTS wholesale_products ( id BIGSERIAL PRIMARY
-KEY, product_id UUID REFERENCES products(id) ON DELETE SET NULL,
-product_name TEXT, wholesale_price_kes NUMERIC(12,2) NOT NULL CHECK
-(wholesale_price_kes >= 0), min_order_quantity INTEGER NOT NULL DEFAULT
-1 CHECK (min_order_quantity > 0), stock_quantity INTEGER NOT NULL
-DEFAULT 0 CHECK (stock_quantity >= 0), minimum_stock INTEGER NOT NULL
-DEFAULT 10 CHECK (minimum_stock >= 0), is_active BOOLEAN NOT NULL
-DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at
-TIMESTAMPTZ NOT NULL DEFAULT NOW(), CHECK (product_id IS NOT NULL OR
-product_name IS NOT NULL) ); CREATE INDEX IF NOT EXISTS
-idx_wholesale_products_active ON wholesale_products(is_active, id);
+
+-- ============================================================
+-- 3. ORDERS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS orders (
+    id UUID PRIMARY KEY,
+    order_code VARCHAR(50) NOT NULL UNIQUE,
+
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50) NOT NULL,
+    customer_email VARCHAR(255),
+
+    fulfillment_type VARCHAR(20) NOT NULL
+        CHECK (fulfillment_type IN ('pickup', 'delivery')),
+
+    delivery_address TEXT,
+    notes TEXT,
+
+    marketing_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
+
+    subtotal_kes INTEGER NOT NULL
+        CHECK (subtotal_kes >= 0),
+
+    delivery_fee_kes INTEGER NOT NULL DEFAULT 0
+        CHECK (delivery_fee_kes >= 0),
+
+    total_kes INTEGER NOT NULL
+        CHECK (total_kes >= 0),
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (
+            status IN (
+                'pending',
+                'preparing',
+                'ready',
+                'completed',
+                'cancelled'
+            )
+        ),
+
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'cash'
+        CHECK (payment_method IN ('cash', 'mpesa')),
+
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (
+            payment_status IN (
+                'pending',
+                'processing',
+                'paid',
+                'failed'
+            )
+        ),
+
+    mpesa_checkout_request_id VARCHAR(255),
+    mpesa_merchant_request_id VARCHAR(255),
+    mpesa_receipt_number VARCHAR(255),
+    mpesa_phone VARCHAR(50),
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ============================================================
+-- 4. ORDER ITEMS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id UUID PRIMARY KEY,
+
+    order_id UUID NOT NULL
+        REFERENCES orders(id)
+        ON DELETE CASCADE,
+
+    product_id UUID
+        REFERENCES products(id)
+        ON DELETE SET NULL,
+
+    product_name VARCHAR(255) NOT NULL,
+
+    unit_price_kes INTEGER NOT NULL
+        CHECK (unit_price_kes >= 0),
+
+    quantity INTEGER NOT NULL
+        CHECK (quantity >= 1),
+
+    line_total_kes INTEGER NOT NULL
+        CHECK (line_total_kes >= 0)
+);
+
+
+-- ============================================================
+-- 5. SHOPKEEPERS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS shopkeepers (
+    id BIGSERIAL PRIMARY KEY,
+
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50) NOT NULL,
+
+    location TEXT NOT NULL DEFAULT '',
+
+    credit_limit_kes NUMERIC(12,2) NOT NULL DEFAULT 0
+        CHECK (credit_limit_kes >= 0),
+
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    deactivation_reason TEXT,
+    deactivated_at TIMESTAMPTZ,
+
+    password_hash TEXT,
+
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 6. WHOLESALE PRODUCTS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_products (
+    id BIGSERIAL PRIMARY KEY,
+
+    product_id UUID
+        REFERENCES products(id)
+        ON DELETE SET NULL,
+
+    product_name TEXT,
+
+    wholesale_price_kes NUMERIC(12,2) NOT NULL
+        CHECK (wholesale_price_kes >= 0),
+
+    min_order_quantity INTEGER NOT NULL DEFAULT 1
+        CHECK (min_order_quantity > 0),
+
+    stock_quantity INTEGER NOT NULL DEFAULT 0
+        CHECK (stock_quantity >= 0),
+
+    minimum_stock INTEGER NOT NULL DEFAULT 10
+        CHECK (minimum_stock >= 0),
+
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CHECK (
+        product_id IS NOT NULL
+        OR product_name IS NOT NULL
+    )
+);
+
+
+-- ============================================================
+-- 7. WHOLESALE ORDERS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_orders (
+    id BIGSERIAL PRIMARY KEY,
+
+    shopkeeper_id BIGINT
+        REFERENCES shopkeepers(id)
+        ON DELETE SET NULL,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (
+            status IN (
+                'pending',
+                'approved',
+                'processing',
+                'ready',
+                'completed',
+                'cancelled'
+            )
+        ),
+
+    total_kes NUMERIC(12,2) NOT NULL
+        CHECK (total_kes >= 0),
+
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 8. WHOLESALE ORDER ITEMS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_order_items (
+    id BIGSERIAL PRIMARY KEY,
+
+    order_id BIGINT NOT NULL
+        REFERENCES wholesale_orders(id)
+        ON DELETE CASCADE,
+
+    wholesale_product_id BIGINT NOT NULL
+        REFERENCES wholesale_products(id)
+        ON DELETE RESTRICT,
+
+    product_id UUID
+        REFERENCES products(id)
+        ON DELETE SET NULL,
+
+    product_name TEXT NOT NULL,
+
+    quantity INTEGER NOT NULL
+        CHECK (quantity > 0),
+
+    unit_price_kes NUMERIC(12,2) NOT NULL
+        CHECK (unit_price_kes >= 0),
+
+    line_total_kes NUMERIC(12,2) NOT NULL
+        CHECK (line_total_kes >= 0)
+);
+
+
+-- ============================================================
+-- 9. WHOLESALE NOTIFICATIONS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_notifications (
+    id BIGSERIAL PRIMARY KEY,
+
+    shopkeeper_id BIGINT NOT NULL
+        REFERENCES shopkeepers(id)
+        ON DELETE CASCADE,
+
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 10. PURCHASES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS purchases (
+    id BIGSERIAL PRIMARY KEY,
+
+    shopkeeper_id BIGINT
+        REFERENCES shopkeepers(id)
+        ON DELETE SET NULL,
+
+    product_name TEXT NOT NULL,
+
+    quantity INTEGER NOT NULL
+        CHECK (quantity > 0),
+
+    amount_kes NUMERIC(12,2) NOT NULL
+        CHECK (amount_kes >= 0),
+
+    notes TEXT,
+
+    date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    source_order_id BIGINT
+        REFERENCES wholesale_orders(id)
+        ON DELETE SET NULL
+);
+
+
+-- ============================================================
+-- 11. MANUAL SALES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS manual_sales (
+    id BIGSERIAL PRIMARY KEY,
+
+    shopkeeper_id BIGINT
+        REFERENCES shopkeepers(id)
+        ON DELETE SET NULL,
+
+    wholesale_product_id BIGINT
+        REFERENCES wholesale_products(id)
+        ON DELETE SET NULL,
+
+    product_name TEXT,
+
+    quantity INTEGER
+        CHECK (quantity IS NULL OR quantity > 0),
+
+    unit_price_kes NUMERIC(12,2),
+
+    amount_kes NUMERIC(12,2) NOT NULL
+        CHECK (amount_kes > 0),
+
+    customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in',
+
+    customer_name TEXT,
+
+    payment_method VARCHAR(20),
+
+    reference VARCHAR(100),
+
+    sale_period VARCHAR(50),
+
+    sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
+
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 12. PAYMENTS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS payments (
+    id BIGSERIAL PRIMARY KEY,
+
+    shopkeeper_id BIGINT
+        REFERENCES shopkeepers(id)
+        ON DELETE SET NULL,
+
+    amount_kes NUMERIC(12,2) NOT NULL
+        CHECK (amount_kes > 0),
+
+    notes TEXT,
+
+    method VARCHAR(20) NOT NULL DEFAULT 'cash',
+
+    reference VARCHAR(100),
+
+    status VARCHAR(20) NOT NULL DEFAULT 'confirmed',
+
+    date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    manual_sale_id BIGINT
+        REFERENCES manual_sales(id)
+        ON DELETE CASCADE,
+
+    mpesa_checkout_request_id VARCHAR(255),
+    mpesa_merchant_request_id VARCHAR(255),
+    mpesa_receipt_number VARCHAR(255),
+    mpesa_phone VARCHAR(50)
+);
+
+
+-- ============================================================
+-- 13. WHOLESALE EXPENSES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS wholesale_expenses (
+    id BIGSERIAL PRIMARY KEY,
+
+    amount_kes NUMERIC(12,2) NOT NULL
+        CHECK (amount_kes > 0),
+
+    category VARCHAR(100) NOT NULL,
+
+    description TEXT NOT NULL DEFAULT '',
+
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 14. INVENTORY MOVEMENTS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS inventory_movements (
+    id BIGSERIAL PRIMARY KEY,
+
+    wholesale_product_id BIGINT NOT NULL
+        REFERENCES wholesale_products(id)
+        ON DELETE CASCADE,
+
+    movement_type VARCHAR(20) NOT NULL
+        CHECK (
+            movement_type IN (
+                'opening',
+                'restock',
+                'sale',
+                'adjustment',
+                'return'
+            )
+        ),
+
+    quantity INTEGER NOT NULL,
+
+    stock_before INTEGER NOT NULL
+        CHECK (stock_before >= 0),
+
+    stock_after INTEGER NOT NULL
+        CHECK (stock_after >= 0),
+
+    reference_type VARCHAR(50),
+    reference_id BIGINT,
+
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 15. DATABASE COMPATIBILITY UPDATES
+-- ============================================================
+-- IMPORTANT:
+-- These run BEFORE any indexes are created.
+-- This makes the schema safe for an existing PostgreSQL database.
+
+
+-- ORDERS
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS mpesa_checkout_request_id VARCHAR(255);
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS mpesa_merchant_request_id VARCHAR(255);
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
+
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
+
+
+-- SHOPKEEPERS
+ALTER TABLE shopkeepers
+ADD COLUMN IF NOT EXISTS deactivation_reason TEXT;
+
+ALTER TABLE shopkeepers
+ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;
+
+ALTER TABLE shopkeepers
+ADD COLUMN IF NOT EXISTS password_hash TEXT;
+
+
+-- MANUAL SALES
+ALTER TABLE manual_sales
+ADD COLUMN IF NOT EXISTS customer_name TEXT;
+
+ALTER TABLE manual_sales
+ADD COLUMN IF NOT EXISTS reference VARCHAR(100);
+
+ALTER TABLE manual_sales
+ADD COLUMN IF NOT EXISTS unit_price_kes NUMERIC(12,2);
+
+
+-- PAYMENTS
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS manual_sale_id BIGINT;
+
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS mpesa_checkout_request_id VARCHAR(255);
+
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS mpesa_merchant_request_id VARCHAR(255);
+
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
+
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
+
+
+-- ============================================================
+-- 16. FOREIGN KEY COMPATIBILITY
+-- ============================================================
+
+ALTER TABLE purchases
+ALTER COLUMN shopkeeper_id DROP NOT NULL;
+
+ALTER TABLE purchases
+DROP CONSTRAINT IF EXISTS purchases_shopkeeper_id_fkey;
+
+ALTER TABLE purchases
+ADD CONSTRAINT purchases_shopkeeper_id_fkey
+FOREIGN KEY (shopkeeper_id)
+REFERENCES shopkeepers(id)
+ON DELETE SET NULL;
+
+
+ALTER TABLE payments
+ALTER COLUMN shopkeeper_id DROP NOT NULL;
+
+ALTER TABLE payments
+DROP CONSTRAINT IF EXISTS payments_shopkeeper_id_fkey;
+
+ALTER TABLE payments
+ADD CONSTRAINT payments_shopkeeper_id_fkey
+FOREIGN KEY (shopkeeper_id)
+REFERENCES shopkeepers(id)
+ON DELETE SET NULL;
+
+
+ALTER TABLE manual_sales
+ALTER COLUMN shopkeeper_id DROP NOT NULL;
+
+ALTER TABLE manual_sales
+DROP CONSTRAINT IF EXISTS manual_sales_shopkeeper_id_fkey;
+
+ALTER TABLE manual_sales
+ADD CONSTRAINT manual_sales_shopkeeper_id_fkey
+FOREIGN KEY (shopkeeper_id)
+REFERENCES shopkeepers(id)
+ON DELETE SET NULL;
+
+
+ALTER TABLE manual_sales
+DROP CONSTRAINT IF EXISTS manual_sales_wholesale_product_id_fkey;
+
+ALTER TABLE manual_sales
+ADD CONSTRAINT manual_sales_wholesale_product_id_fkey
+FOREIGN KEY (wholesale_product_id)
+REFERENCES wholesale_products(id)
+ON DELETE SET NULL;
+
+
+ALTER TABLE wholesale_orders
+ALTER COLUMN shopkeeper_id DROP NOT NULL;
+
+ALTER TABLE wholesale_orders
+DROP CONSTRAINT IF EXISTS wholesale_orders_shopkeeper_id_fkey;
+
+ALTER TABLE wholesale_orders
+ADD CONSTRAINT wholesale_orders_shopkeeper_id_fkey
+FOREIGN KEY (shopkeeper_id)
+REFERENCES shopkeepers(id)
+ON DELETE SET NULL;
+
+
+-- ============================================================
+-- 17. INDEXES
+-- ============================================================
+-- These are intentionally LAST.
+-- All columns above already exist by this point.
+
+
+CREATE INDEX IF NOT EXISTS idx_products_active_sort
+ON products (is_active, sort_order, id);
+
+
+CREATE INDEX IF NOT EXISTS idx_offers_active_created
+ON offers (is_active, created_at DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_orders_created
+ON orders (created_at DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_orders_code
+ON orders (order_code);
+
+
+CREATE INDEX IF NOT EXISTS idx_orders_mpesa_checkout
+ON orders (mpesa_checkout_request_id);
+
+
+CREATE INDEX IF NOT EXISTS idx_order_items_order
+ON order_items (order_id);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_mpesa_receipt_unique
+ON orders (mpesa_receipt_number)
+WHERE mpesa_receipt_number IS NOT NULL;
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shopkeepers_phone_unique
+ON shopkeepers (phone);
+
+
+CREATE INDEX IF NOT EXISTS idx_wholesale_products_active
+ON wholesale_products (is_active, id);
+
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wholesale_products_product_unique
-ON wholesale_products(product_id) WHERE product_id IS NOT NULL;
+ON wholesale_products (product_id)
+WHERE product_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS wholesale_orders ( id BIGSERIAL PRIMARY KEY,
-shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
-status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN
-('pending','approved','processing','ready','completed','cancelled')),
-total_kes NUMERIC(12,2) NOT NULL CHECK (total_kes >= 0), notes TEXT,
-created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ
-NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT EXISTS
-idx_wholesale_orders_shopkeeper ON wholesale_orders(shopkeeper_id,
-created_at DESC);
 
-CREATE TABLE IF NOT EXISTS wholesale_order_items ( id BIGSERIAL PRIMARY
-KEY, order_id BIGINT NOT NULL REFERENCES wholesale_orders(id) ON DELETE
-CASCADE, wholesale_product_id BIGINT NOT NULL REFERENCES
-wholesale_products(id) ON DELETE RESTRICT, product_id UUID REFERENCES
-products(id) ON DELETE SET NULL, product_name TEXT NOT NULL, quantity
-INTEGER NOT NULL CHECK (quantity > 0), unit_price_kes NUMERIC(12,2) NOT
-NULL CHECK (unit_price_kes >= 0), line_total_kes NUMERIC(12,2) NOT NULL
-CHECK (line_total_kes >= 0) ); CREATE INDEX IF NOT EXISTS
-idx_wholesale_order_items_order ON wholesale_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_wholesale_orders_shopkeeper
+ON wholesale_orders (shopkeeper_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS wholesale_notifications ( id BIGSERIAL
-PRIMARY KEY, shopkeeper_id BIGINT NOT NULL REFERENCES shopkeepers(id) ON
-DELETE CASCADE, title TEXT NOT NULL, message TEXT NOT NULL, is_read
-BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT
-NOW() ); CREATE INDEX IF NOT EXISTS
-idx_wholesale_notifications_shopkeeper ON
-wholesale_notifications(shopkeeper_id, is_read, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS purchases ( id BIGSERIAL PRIMARY KEY,
-shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
-product_name TEXT NOT NULL, quantity INTEGER NOT NULL CHECK (quantity >
-0), amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes >= 0), notes
-TEXT, date TIMESTAMPTZ NOT NULL DEFAULT NOW(), source_order_id BIGINT
-REFERENCES wholesale_orders(id) ON DELETE SET NULL ); CREATE INDEX IF
-NOT EXISTS idx_purchases_shopkeeper_date ON purchases(shopkeeper_id,
-date DESC); CREATE INDEX IF NOT EXISTS idx_purchases_source_order ON
-purchases(source_order_id) WHERE source_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wholesale_order_items_order
+ON wholesale_order_items (order_id);
 
-CREATE TABLE IF NOT EXISTS manual_sales ( id BIGSERIAL PRIMARY KEY,
-shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
-wholesale_product_id BIGINT REFERENCES wholesale_products(id) ON DELETE
-SET NULL, product_name TEXT, quantity INTEGER CHECK (quantity IS NULL OR
-quantity > 0), unit_price_kes NUMERIC(12,2), amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0),
-customer_type VARCHAR(30) NOT NULL DEFAULT 'walk_in', customer_name
-TEXT, payment_method VARCHAR(20), reference VARCHAR(100), sale_period
-VARCHAR(50), sale_date DATE NOT NULL DEFAULT CURRENT_DATE, notes TEXT,
-created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT
-EXISTS idx_manual_sales_date ON manual_sales(sale_date DESC); CREATE
-INDEX IF NOT EXISTS idx_manual_sales_shopkeeper_date ON
-manual_sales(shopkeeper_id, sale_date DESC);
 
-CREATE TABLE IF NOT EXISTS payments ( id BIGSERIAL PRIMARY KEY,
-shopkeeper_id BIGINT REFERENCES shopkeepers(id) ON DELETE SET NULL,
-amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0), notes TEXT,
-method VARCHAR(20) NOT NULL DEFAULT 'cash', reference VARCHAR(100),
-status VARCHAR(20) NOT NULL DEFAULT 'confirmed', date TIMESTAMPTZ NOT
-NULL DEFAULT NOW(), manual_sale_id BIGINT REFERENCES manual_sales(id) ON
-DELETE CASCADE, mpesa_checkout_request_id VARCHAR(255),
-mpesa_merchant_request_id VARCHAR(255), mpesa_receipt_number
-VARCHAR(255), mpesa_phone VARCHAR(50) ); CREATE INDEX IF NOT EXISTS
-idx_payments_shopkeeper_date ON payments(shopkeeper_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_payments_mpesa_checkout ON
-payments(mpesa_checkout_request_id); CREATE INDEX IF NOT EXISTS
-idx_payments_manual_sale ON payments(manual_sale_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_mpesa_receipt_unique ON
-orders(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_mpesa_receipt_unique ON
-payments(mpesa_receipt_number) WHERE mpesa_receipt_number IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_wholesale_notifications_shopkeeper
+ON wholesale_notifications (
+    shopkeeper_id,
+    is_read,
+    created_at DESC
+);
 
-CREATE TABLE IF NOT EXISTS wholesale_expenses ( id BIGSERIAL PRIMARY
-KEY, amount_kes NUMERIC(12,2) NOT NULL CHECK (amount_kes > 0), category
-VARCHAR(100) NOT NULL, description TEXT NOT NULL DEFAULT '',
-expense_date DATE NOT NULL DEFAULT CURRENT_DATE, created_at TIMESTAMPTZ
-NOT NULL DEFAULT NOW() ); CREATE INDEX IF NOT EXISTS
-idx_wholesale_expenses_date ON wholesale_expenses(expense_date DESC);
-CREATE INDEX IF NOT EXISTS idx_wholesale_expenses_category ON
-wholesale_expenses(category);
 
-CREATE TABLE IF NOT EXISTS inventory_movements ( id BIGSERIAL PRIMARY
-KEY, wholesale_product_id BIGINT NOT NULL REFERENCES
-wholesale_products(id) ON DELETE CASCADE, movement_type VARCHAR(20) NOT
-NULL CHECK (movement_type IN
-('opening','restock','sale','adjustment','return')), quantity INTEGER
-NOT NULL, stock_before INTEGER NOT NULL CHECK (stock_before >= 0),
-stock_after INTEGER NOT NULL CHECK (stock_after >= 0), reference_type
-VARCHAR(50), reference_id BIGINT, notes TEXT, created_at TIMESTAMPTZ NOT
-NULL DEFAULT NOW() ); CREATE INDEX IF NOT EXISTS
-idx_inventory_movements_product ON
-inventory_movements(wholesale_product_id, created_at DESC); CREATE INDEX
-IF NOT EXISTS idx_inventory_movements_created ON
-inventory_movements(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_purchases_shopkeeper_date
+ON purchases (shopkeeper_id, date DESC);
 
--- Compatibility additions for an older KENJAV PostgreSQL database.
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivation_reason TEXT;
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS deactivated_at
-TIMESTAMPTZ; ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS
-customer_name TEXT; ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS
-reference VARCHAR(100); ALTER TABLE payments ADD COLUMN IF NOT EXISTS
-manual_sale_id BIGINT; ALTER TABLE payments ADD COLUMN IF NOT EXISTS
-mpesa_checkout_request_id VARCHAR(255); ALTER TABLE payments ADD COLUMN
-IF NOT EXISTS mpesa_merchant_request_id VARCHAR(255); ALTER TABLE
-payments ADD COLUMN IF NOT EXISTS mpesa_receipt_number VARCHAR(255);
-ALTER TABLE payments ADD COLUMN IF NOT EXISTS mpesa_phone VARCHAR(50);
-ALTER TABLE shopkeepers ADD COLUMN IF NOT EXISTS password_hash TEXT;
-ALTER TABLE manual_sales ADD COLUMN IF NOT EXISTS unit_price_kes NUMERIC(12,2);
-ALTER TABLE manual_sales ALTER COLUMN unit_price_kes DROP NOT NULL;
 
--- Allow shopkeeper accounts to be deleted while keeping historical records.
--- Dropping NOT NULL alone is not enough: a plain REFERENCES column defaults
--- to ON DELETE NO ACTION, which still blocks the delete outright. The
--- foreign key itself must be rebuilt with ON DELETE SET NULL.
-ALTER TABLE purchases ALTER COLUMN shopkeeper_id DROP NOT NULL;
-ALTER TABLE purchases DROP CONSTRAINT IF EXISTS purchases_shopkeeper_id_fkey;
-ALTER TABLE purchases ADD CONSTRAINT purchases_shopkeeper_id_fkey
-  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_purchases_source_order
+ON purchases (source_order_id)
+WHERE source_order_id IS NOT NULL;
 
-ALTER TABLE payments ALTER COLUMN shopkeeper_id DROP NOT NULL;
-ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_shopkeeper_id_fkey;
-ALTER TABLE payments ADD CONSTRAINT payments_shopkeeper_id_fkey
-  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
 
-ALTER TABLE manual_sales ALTER COLUMN shopkeeper_id DROP NOT NULL;
-ALTER TABLE manual_sales DROP CONSTRAINT IF EXISTS manual_sales_shopkeeper_id_fkey;
-ALTER TABLE manual_sales ADD CONSTRAINT manual_sales_shopkeeper_id_fkey
-  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
-ALTER TABLE manual_sales DROP CONSTRAINT IF EXISTS manual_sales_wholesale_product_id_fkey;
-ALTER TABLE manual_sales ADD CONSTRAINT manual_sales_wholesale_product_id_fkey
-  FOREIGN KEY (wholesale_product_id) REFERENCES wholesale_products(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_manual_sales_date
+ON manual_sales (sale_date DESC);
 
-ALTER TABLE wholesale_orders ALTER COLUMN shopkeeper_id DROP NOT NULL;
-ALTER TABLE wholesale_orders DROP CONSTRAINT IF EXISTS wholesale_orders_shopkeeper_id_fkey;
-ALTER TABLE wholesale_orders ADD CONSTRAINT wholesale_orders_shopkeeper_id_fkey
-  FOREIGN KEY (shopkeeper_id) REFERENCES shopkeepers(id) ON DELETE SET NULL;
 
-CREATE INDEX IF NOT EXISTS idx_payments_manual_sale ON
-payments(manual_sale_id); CREATE INDEX IF NOT EXISTS
-idx_payments_mpesa_checkout ON payments(mpesa_checkout_request_id);
+CREATE INDEX IF NOT EXISTS idx_manual_sales_shopkeeper_date
+ON manual_sales (shopkeeper_id, sale_date DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_payments_shopkeeper_date
+ON payments (shopkeeper_id, date DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_payments_mpesa_checkout
+ON payments (mpesa_checkout_request_id);
+
+
+CREATE INDEX IF NOT EXISTS idx_payments_manual_sale
+ON payments (manual_sale_id);
+
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_mpesa_receipt_unique
+ON payments (mpesa_receipt_number)
+WHERE mpesa_receipt_number IS NOT NULL;
+
+
+CREATE INDEX IF NOT EXISTS idx_wholesale_expenses_date
+ON wholesale_expenses (expense_date DESC);
+
+
+CREATE INDEX IF NOT EXISTS idx_wholesale_expenses_category
+ON wholesale_expenses (category);
+
+
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_product
+ON inventory_movements (
+    wholesale_product_id,
+    created_at DESC
+);
+
+
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_created
+ON inventory_movements (created_at DESC);
